@@ -114,7 +114,19 @@ function procBase(rows) {
     const row = rows[r];
     if (!row || row.length === 0) continue;
     const id = String(row[iID] || "").trim();
-    const fecha = String(row[iFecha] || "").trim();
+    /* Fecha: puede ser string "2026.01.02", Date object, o serial number de Excel */
+    let fechaRaw = row[iFecha];
+    let fecha;
+    if (typeof fechaRaw === "number" && fechaRaw > 40000) {
+      /* Excel serial number: convertir a YYYY.MM.DD */
+      const d = new Date((fechaRaw - 25569) * 86400000);
+      fecha = d.getFullYear() + "." + String(d.getMonth()+1).padStart(2,"0") + "." + String(d.getDate()).padStart(2,"0");
+    } else if (fechaRaw && typeof fechaRaw === "object" && typeof fechaRaw.getFullYear === "function") {
+      /* Date object de SheetJS con cellDates */
+      fecha = fechaRaw.getFullYear() + "." + String(fechaRaw.getMonth()+1).padStart(2,"0") + "." + String(fechaRaw.getDate()).padStart(2,"0");
+    } else {
+      fecha = String(fechaRaw || "").trim();
+    }
     if (!id || !fecha) continue;
     const key = id + "|" + fecha;
     if (!grouped[key]) {
@@ -223,8 +235,11 @@ function procBase(rows) {
     
     // -- Parsear fecha --
     let dObj = null;
-    const fs = emp.fecha;
-    if (fs.includes(".")) {
+    const fs = String(emp.fecha);
+    if (typeof emp.fecha === "number" && emp.fecha > 40000) {
+      // Excel serial number: days since 1899-12-30
+      dObj = new Date((emp.fecha - 25569) * 86400000);
+    } else if (fs.includes(".")) {
       const parts = fs.split(".");
       dObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
     } else if (fs.includes("-")) {
@@ -1379,15 +1394,95 @@ function PolView({ marc: marcaciones = [] }) {
 
   const [resultado, setResultado] = useState({ politicas: [], totalEmpleados: 0 });
   const [calculando, setCalculando] = useState(false);
+  const [progresoPol, setProgresoPol] = useState(0);
 
   useEffect(() => {
+    if (marcacionesFiltradas.length === 0) {
+      setResultado({ politicas: POLITICAS_DEF.map(p => ({...p, desc: p.descFn(parametros), violadores:[], empleadosAfectados:0, totalViolaciones:0, porcentaje:0, cumplimiento:100})), totalEmpleados: 0 });
+      return;
+    }
     setCalculando(true);
-    const t = setTimeout(() => {
-      const r = evaluarPoliticas(marcacionesFiltradas, parametros, "Todas");
-      setResultado(r);
-      setCalculando(false);
-    }, 30); // tick para que React pinte el spinner primero
-    return () => clearTimeout(t);
+    setProgresoPol(0);
+    let cancelled = false;
+
+    /* Procesar en chunks asincrónicos para no congelar el navegador */
+    const CHUNK = 800;
+    const datos = marcacionesFiltradas;
+    const porEmpleado = {};
+    datos.forEach(m => {
+      const id = m.IDENTIFICACION;
+      if (!porEmpleado[id]) porEmpleado[id] = { id, nombre: m.EMPLEADO, cargo: m.CARGO || "", sede: m.DEPENDENCIA, seccion: m.CENTROCOSTO, registros: [] };
+      porEmpleado[id].registros.push(m);
+    });
+    const empleados = Object.values(porEmpleado);
+    const totalEmpleados = empleados.length;
+    const parseCargos = str => (str||"").split(",").map(c=>c.trim().toUpperCase()).filter(Boolean);
+    const cargosSup = parseCargos(parametros.cargosSupervisor);
+    const cargosTPartido = parseCargos(parametros.turnoPartidoAplicaCargos);
+    const esSupervisor = cargo => { const c=(cargo||"").toUpperCase(); return cargosSup.some(s=>c.includes(s)); };
+    const esCargoTP = cargo => { if(!cargosTPartido.length)return true; const c=(cargo||"").toUpperCase(); return cargosTPartido.some(s=>c.includes(s)); };
+    const resultados = {};
+    POLITICAS_DEF.forEach(p => { resultados[p.id] = { ...p, desc: p.descFn(parametros), violadores: [] }; });
+    const breakLimiteExtension = parametros.breakNormalMax + parametros.breakTolerancia;
+    const totalDomingosPorMesGlobal = {};
+    { const fechasDomPorMes = {}; datos.forEach(d => { if(d.DIA_SEMANA==="Domingo"&&d.MES){ if(!fechasDomPorMes[d.MES])fechasDomPorMes[d.MES]={}; fechasDomPorMes[d.MES][d.FECHA]=1; } }); Object.keys(fechasDomPorMes).forEach(mes => { totalDomingosPorMesGlobal[mes] = Math.max(Object.keys(fechasDomPorMes[mes]).length,4); }); }
+
+    let idx = 0;
+    function processChunk() {
+      if (cancelled) return;
+      const end = Math.min(idx + CHUNK, empleados.length);
+      for (let ei = idx; ei < end; ei++) {
+        const emp = empleados[ei];
+        const regs = emp.registros;
+        const base = { id:emp.id, nombre:emp.nombre, cargo:emp.cargo, sede:emp.sede, seccion:emp.seccion };
+        regs.forEach(r => {
+          const horas = r.TOTAL_HORAS||0;
+          const horasExtra = Math.max(0,horas-parametros.jornadaNormal);
+          const breakPairs = r.BREAK_PAIRS||[];
+          const breaksCortos = breakPairs.filter(b=>b.tipo==="BREAK_CORTO");
+          const tpIlegales = breakPairs.filter(b=>b.tipo==="TP_ILEGAL");
+          const breakCortoMaxMin = r.BREAK_CORTO_MAX_MIN||0;
+          const breakCortoTotalMin = r.BREAK_CORTO_TOTAL_MIN||0;
+          const detBreak = r.BREAK_DETALLE||"";
+          if(horas>parametros.jornadaExtendidaHoras&&breakCortoTotalMin<parametros.breakMinimoMin) resultados.JEX.violadores.push({...base,fecha:r.FECHA,detalle:horas.toFixed(1)+"h, break total: "+breakCortoTotalMin+"min (min "+parametros.breakMinimoMin+"min)",valor:horas});
+          if(breaksCortos.length>0&&breakCortoMaxMin<parametros.breakMinimoMin) resultados.BRK.violadores.push({...base,fecha:r.FECHA,detalle:"Break max: "+breakCortoMaxMin+"min (min "+parametros.breakMinimoMin+"min)",valor:breakCortoMaxMin});
+          if(horas>parametros.jornadaMaxDia) resultados.JXC.violadores.push({...base,fecha:r.FECHA,detalle:horas.toFixed(1)+"h (max "+parametros.jornadaMaxDia+"h, excede "+(horas-parametros.jornadaMaxDia).toFixed(1)+"h)",valor:horas});
+          breaksCortos.forEach(b => { if(b.duracionMin>breakLimiteExtension){ const sH=Math.floor(b.salidaH)+":"+String(Math.round((b.salidaH%1)*60)).padStart(2,"0"); const lH=Math.floor(b.llegadaH)+":"+String(Math.round((b.llegadaH%1)*60)).padStart(2,"0"); resultados.EBR.violadores.push({...base,fecha:r.FECHA,detalle:"Break "+b.duracionMin+"min ("+sH+"-"+lH+"). Excede "+(b.duracionMin-breakLimiteExtension)+"min",valor:b.duracionMin}); } });
+          tpIlegales.forEach(b => { const sH=Math.floor(b.salidaH)+":"+String(Math.round((b.salidaH%1)*60)).padStart(2,"0"); const lH=Math.floor(b.llegadaH)+":"+String(Math.round((b.llegadaH%1)*60)).padStart(2,"0"); resultados.EBR.violadores.push({...base,fecha:r.FECHA,detalle:"TP ILEGAL: "+b.duracionMin+"min ("+sH+"-"+lH+")",valor:b.duracionMin}); });
+          if(horasExtra>parametros.horasExtraMaxDia) resultados.HED.violadores.push({...base,fecha:r.FECHA,detalle:horasExtra.toFixed(1)+"h extra (max "+parametros.horasExtraMaxDia+"h). Total: "+horas.toFixed(1)+"h",valor:horasExtra});
+        });
+        const porSemana = {};
+        regs.forEach(r => { const sem=r.SEMANA||"Sin semana"; if(!porSemana[sem])porSemana[sem]=[]; porSemana[sem].push(r); });
+        Object.entries(porSemana).forEach(([semana,regsS]) => {
+          const heS = regsS.reduce((s,r)=>s+Math.max(0,(r.TOTAL_HORAS||0)-parametros.jornadaNormal),0);
+          const diasTP = regsS.filter(r=>(r.TURNOS_PARTIDOS||r.TURNO_PARTIDO||0)>0).length;
+          if(esCargoTP(emp.cargo)&&diasTP>parametros.turnoPartidoMaxSemana){ const leg=regsS.reduce((s,r)=>s+(r.TP_LEGALES||0),0); const ile=regsS.reduce((s,r)=>s+(r.TP_ILEGALES||0),0); resultados.TPE.violadores.push({...base,fecha:semana,detalle:diasTP+" dias TP (max "+parametros.turnoPartidoMaxSemana+"). Leg:"+leg+" Ile:"+ile,valor:diasTP}); }
+          if(heS>parametros.horasExtraMaxSemana) resultados.HES.violadores.push({...base,fecha:semana,detalle:heS.toFixed(1)+"h extra en semana (max "+parametros.horasExtraMaxSemana+"h)",valor:heS});
+        });
+        const domingosPorMes = {};
+        regs.forEach(r => { if(r.DIA_SEMANA==="Domingo"){ const mes=r.MES||"Sin mes"; domingosPorMes[mes]=(domingosPorMes[mes]||0)+1; } });
+        Object.entries(domingosPorMes).forEach(([mes,trabajados]) => {
+          const totalDom = totalDomingosPorMesGlobal[mes]||4;
+          if(esSupervisor(emp.cargo)&&trabajados>parametros.domingoMaxSupervisores) resultados.DSU.violadores.push({...base,fecha:mes,detalle:trabajados+" domingos en "+mes+" (max "+parametros.domingoMaxSupervisores+")",valor:trabajados});
+          if(!esSupervisor(emp.cargo)){ const libres=totalDom-trabajados; if(libres<parametros.domingoMinDescansoBase) resultados.DBA.violadores.push({...base,fecha:mes,detalle:trabajados+"/"+totalDom+" domingos, "+libres+" libre(s) (min "+parametros.domingoMinDescansoBase+")",valor:trabajados}); }
+        });
+      }
+      idx = end;
+      if (!cancelled) setProgresoPol(Math.round(idx / empleados.length * 100));
+      if (idx < empleados.length) {
+        setTimeout(processChunk, 0);
+      } else {
+        const politicas = POLITICAS_DEF.map(pd => {
+          const r = resultados[pd.id];
+          const unicos = {}; r.violadores.forEach(v => { unicos[v.id]=true; });
+          const ea = Object.keys(unicos).length;
+          return { ...r, empleadosAfectados:ea, totalViolaciones:r.violadores.length, porcentaje:totalEmpleados>0?ea/totalEmpleados:0, cumplimiento:totalEmpleados>0?Math.round((1-ea/totalEmpleados)*100):100 };
+        });
+        if (!cancelled) { setResultado({ politicas, totalEmpleados }); setCalculando(false); }
+      }
+    }
+    setTimeout(processChunk, 50);
+    return () => { cancelled = true; };
   }, [marcacionesFiltradas, parametros]);
 
   const { politicas, totalEmpleados } = resultado;
@@ -1548,7 +1643,7 @@ function PolView({ marc: marcaciones = [] }) {
           <h2 style={{color:C.w,fontSize:18,fontWeight:700,margin:0}}>Politicas Laborales</h2>
           <p style={{color:C.td,fontSize:11,margin:"3px 0 0",display:"flex",alignItems:"center",gap:6}}>
             {calculando
-              ? <><span style={{width:10,height:10,borderRadius:"50%",border:"2px solid "+C.p,borderTopColor:"transparent",display:"inline-block",animation:"spin 0.7s linear infinite"}} /><span style={{color:C.p}}>Calculando politicas...</span></>
+              ? <><span style={{width:10,height:10,borderRadius:"50%",border:"2px solid "+C.p,borderTopColor:"transparent",display:"inline-block",animation:"spin 0.7s linear infinite"}} /><span style={{color:C.p}}>Calculando politicas... {progresoPol}%</span><span style={{width:80,height:4,background:C.bd,borderRadius:2,overflow:"hidden",display:"inline-block",marginLeft:6}}><span style={{width:progresoPol+"%",height:"100%",background:C.p,display:"block",borderRadius:2,transition:"width 0.2s"}} /></span></>
               : <span>{totalEmpleados} empleados evaluados {sedeSel !== "Todas" ? `en ${sedeSel}` : "en todas las sedes"}{mesSel !== "Todos" ? ` · ${mesSel}` : ""} | 9 politicas activas</span>
             }
           </p>
@@ -2043,22 +2138,33 @@ function RiesgoView({ marc }) {
     return ["Todos",...Object.keys(s).sort((a,b)=>ORD.indexOf(a)-ORD.indexOf(b))];
   }, [marc]);
 
-  const { politicas, ranking } = useMemo(() => {
+  const [riesgoResult, setRiesgoResult] = useState({ politicas: [], ranking: [] });
+  const [riesgoCalc, setRiesgoCalc] = useState(false);
+
+  useEffect(() => {
     const filtradas = marc.filter(m =>
       (sedeSel==="Todas"||m.DEPENDENCIA===sedeSel) && (mesSel==="Todos"||m.MES===mesSel)
     );
-    const { politicas } = evaluarPoliticas(filtradas, params, "Todas");
-    const empMap = {};
-    politicas.forEach(pol => {
-      pol.violadores.forEach(v => {
-        if (!empMap[v.id]) empMap[v.id] = { id:v.id, nombre:v.nombre, cargo:v.cargo, sede:v.sede, total:0, pols:{}, infracciones:[] };
-        empMap[v.id].total++;
-        empMap[v.id].pols[pol.id] = (empMap[v.id].pols[pol.id]||0)+1;
-        empMap[v.id].infracciones.push({ polId:pol.id, polNombre:pol.nombre, polNum:pol.num, fecha:v.fecha, detalle:v.detalle });
+    if (filtradas.length === 0) { setRiesgoResult({ politicas:[], ranking:[] }); return; }
+    setRiesgoCalc(true);
+    const t = setTimeout(() => {
+      const { politicas } = evaluarPoliticas(filtradas, params, "Todas");
+      const empMap = {};
+      politicas.forEach(pol => {
+        pol.violadores.forEach(v => {
+          if (!empMap[v.id]) empMap[v.id] = { id:v.id, nombre:v.nombre, cargo:v.cargo, sede:v.sede, total:0, pols:{}, infracciones:[] };
+          empMap[v.id].total++;
+          empMap[v.id].pols[pol.id] = (empMap[v.id].pols[pol.id]||0)+1;
+          empMap[v.id].infracciones.push({ polId:pol.id, polNombre:pol.nombre, polNum:pol.num, fecha:v.fecha, detalle:v.detalle });
+        });
       });
-    });
-    return { politicas, ranking: Object.values(empMap).sort((a,b)=>b.total-a.total) };
+      setRiesgoResult({ politicas, ranking: Object.values(empMap).sort((a,b)=>b.total-a.total) });
+      setRiesgoCalc(false);
+    }, 50);
+    return () => clearTimeout(t);
   }, [marc, sedeSel, mesSel]);
+
+  const { politicas, ranking } = riesgoResult;
 
   const polsOpts = ["Todas", ...POLITICAS_DEF.map(p => p.id)];
   const polLabels = Object.fromEntries(POLITICAS_DEF.map(p => [p.id, "POL "+p.num+" — "+p.nombre]));
@@ -2078,7 +2184,10 @@ function RiesgoView({ marc }) {
         <Pill label="Sede"    value={sedeSel}   options={sedes}    onChange={setSedeSel} />
         <Pill label="Mes"     value={mesSel}    options={meses}    onChange={setMesSel} />
         <Pill label="Política" value={polFiltro} options={polsOpts} onChange={setPolFiltro} />
-        <span style={{fontSize:11,color:C.td,marginLeft:4}}>{rankFiltrado.length} empleados con infracciones</span>
+        {riesgoCalc
+          ? <span style={{fontSize:11,color:C.p,display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,borderRadius:"50%",border:"2px solid "+C.p,borderTopColor:"transparent",display:"inline-block",animation:"spin 0.7s linear infinite"}} />Calculando...</span>
+          : <span style={{fontSize:11,color:C.td,marginLeft:4}}>{rankFiltrado.length} empleados con infracciones</span>
+        }
       </div>
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:12,marginBottom:20}}>
@@ -2193,21 +2302,40 @@ function TendenciaView({ marc }) {
   const sedes = useMemo(() => { const s={}; marc.forEach(m=>{if(m.DEPENDENCIA)s[m.DEPENDENCIA]=1;}); return ["Todas",...Object.keys(s).sort()]; }, [marc]);
   const ORD_MES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 
-  const tendencia = useMemo(() => {
+  const [tendencia, setTendencia] = useState({ series:[], hayPocosDatos:true });
+  const [tendCalc, setTendCalc] = useState(false);
+
+  useEffect(() => {
     const mesesSet={}; marc.forEach(m=>{if(m.MES)mesesSet[m.MES]=1;});
     const mesesLista = Object.keys(mesesSet).sort((a,b)=>ORD_MES.indexOf(a)-ORD_MES.indexOf(b));
-    if (mesesLista.length < 2) return { series:[], hayPocosDatos:true };
-    const series = POLITICAS_DEF.map(pd => ({
-      id:pd.id, num:pd.num, nombre:pd.nombre,
-      datos: mesesLista.map(mes => {
+    if (mesesLista.length < 2) { setTendencia({ series:[], hayPocosDatos:true }); return; }
+    setTendCalc(true);
+    let cancelled = false;
+    /* Procesar un mes a la vez de forma async */
+    const cache = {}; /* mes -> politicas */
+    let mi = 0;
+    function nextMes() {
+      if (cancelled) return;
+      if (mi < mesesLista.length) {
+        const mes = mesesLista[mi];
         const filtradas = marc.filter(m => (sedeSel==="Todas"||m.DEPENDENCIA===sedeSel) && m.MES===mes);
-        if (filtradas.length===0) return { mesLabel:mes.charAt(0).toUpperCase()+mes.slice(1,3), cumplimiento:null };
-        const { politicas } = evaluarPoliticas(filtradas, params, "Todas");
-        const pol = politicas.find(p=>p.id===pd.id);
-        return { mesLabel:mes.charAt(0).toUpperCase()+mes.slice(1,3), cumplimiento:pol?.cumplimiento??100 };
-      })
-    }));
-    return { series, hayPocosDatos:false };
+        cache[mes] = filtradas.length > 0 ? evaluarPoliticas(filtradas, params, "Todas").politicas : null;
+        mi++;
+        setTimeout(nextMes, 0);
+      } else {
+        const series = POLITICAS_DEF.map(pd => ({
+          id:pd.id, num:pd.num, nombre:pd.nombre,
+          datos: mesesLista.map(mes => {
+            if (!cache[mes]) return { mesLabel:mes.charAt(0).toUpperCase()+mes.slice(1,3), cumplimiento:null };
+            const pol = cache[mes].find(p=>p.id===pd.id);
+            return { mesLabel:mes.charAt(0).toUpperCase()+mes.slice(1,3), cumplimiento:pol?.cumplimiento??100 };
+          })
+        }));
+        if (!cancelled) { setTendencia({ series, hayPocosDatos:false }); setTendCalc(false); }
+      }
+    }
+    setTimeout(nextMes, 50);
+    return () => { cancelled = true; };
   }, [marc, sedeSel]);
 
   const polsOpts = ["Todas", ...POLITICAS_DEF.map(p=>p.id)];
@@ -2238,9 +2366,10 @@ function TendenciaView({ marc }) {
         <p style={{color:C.td,fontSize:12,margin:0}}>¿Las políticas están mejorando o empeorando mes a mes?</p>
       </div>
 
-      <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
+      <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap",alignItems:"center"}}>
         <Pill label="Sede"     value={sedeSel} options={sedes}    onChange={setSedeSel} />
         <Pill label="Política" value={polSel}  options={polsOpts} onChange={setPolSel} />
+        {tendCalc && <span style={{fontSize:11,color:C.p,display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,borderRadius:"50%",border:"2px solid "+C.p,borderTopColor:"transparent",display:"inline-block",animation:"spin 0.7s linear infinite"}} />Procesando meses...</span>}
       </div>
 
       {tendencia.hayPocosDatos ? (
@@ -2792,23 +2921,21 @@ function App() {
           var nm = file.name.toUpperCase();
           setFS("Leyendo " + file.name + "...");
 
-          /* === CSV / TSV nativo — mucho mas rapido que SheetJS para archivos grandes === */
-          if (file.name.endsWith(".csv") || file.name.endsWith(".tsv") || file.name.endsWith(".txt")) {
+          /* === CSV / TSV nativo — mucho mas rapido que SheetJS === */
+          if (nm.endsWith(".CSV") || nm.endsWith(".TSV") || nm.endsWith(".TXT")) {
             setFS("Leyendo CSV: " + file.name + " (" + (file.size / 1048576).toFixed(1) + " MB)...");
             var csvText = await file.text();
-            /* Detectar separador: ; o , o tab */
             var firstLine = csvText.slice(0, csvText.indexOf("\n"));
             var sep = firstLine.split(";").length > firstLine.split(",").length ? ";" : (firstLine.indexOf("\t") >= 0 ? "\t" : ",");
             var csvLines = csvText.split(/\r?\n/);
-            csvText = null; /* liberar memoria */
+            csvText = null;
             var csvRows = [];
             for (var cli = 0; cli < csvLines.length; cli++) {
               if (csvLines[cli].trim() === "") continue;
               csvRows.push(csvLines[cli].split(sep).map(function(c) { return c.trim(); }));
             }
-            csvLines = null; /* liberar memoria */
+            csvLines = null;
             setFS(csvRows.length - 1 + " filas leidas de " + file.name + ". Procesando...");
-            /* Detectar tipo por headers */
             var csvH = (csvRows[0] || []).map(function(h) { return String(h).toUpperCase(); });
             var esMarc = csvH.some(function(h) { return h.indexOf("IDENTIFICACION") >= 0 || h === "CODEMPLEADO"; }) && csvH.some(function(h) { return h === "HORA" || h === "FUNCION"; });
             var esFact = csvH.some(function(h) { return h.indexOf("FACT") >= 0; }) && csvH.some(function(h) { return h.indexOf("VENTA") >= 0 || h.indexOf("CLASE") >= 0; });
@@ -2819,7 +2946,6 @@ function App() {
               result.fact = procFact(csvRows);
               setFS(result.fact.length + " facturas procesadas de " + file.name);
             } else {
-              /* Intentar como marcaciones por defecto */
               result.marc = procBase(csvRows);
               if (result.marc.length > 0) {
                 setFS(result.marc.length + " marcaciones procesadas de " + file.name);
@@ -2846,7 +2972,7 @@ function App() {
           }
 
           var buf = await file.arrayBuffer();
-          setFS("Parseando Excel: " + file.name + " (" + (file.size / 1048576).toFixed(1) + " MB) — esto puede tardar...");
+          setFS("Parseando Excel: " + file.name + " (" + (file.size / 1048576).toFixed(1) + " MB)...");
           // NO usar cellDates - las horas vienen como fracciones (0 a 1) que son mas faciles de parsear
           var wb = XLSX.read(buf, {type:"array"});
 
