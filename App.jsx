@@ -2792,6 +2792,44 @@ function App() {
           var nm = file.name.toUpperCase();
           setFS("Leyendo " + file.name + "...");
 
+          /* === CSV / TSV nativo — mucho mas rapido que SheetJS para archivos grandes === */
+          if (file.name.endsWith(".csv") || file.name.endsWith(".tsv") || file.name.endsWith(".txt")) {
+            setFS("Leyendo CSV: " + file.name + " (" + (file.size / 1048576).toFixed(1) + " MB)...");
+            var csvText = await file.text();
+            /* Detectar separador: ; o , o tab */
+            var firstLine = csvText.slice(0, csvText.indexOf("\n"));
+            var sep = firstLine.split(";").length > firstLine.split(",").length ? ";" : (firstLine.indexOf("\t") >= 0 ? "\t" : ",");
+            var csvLines = csvText.split(/\r?\n/);
+            csvText = null; /* liberar memoria */
+            var csvRows = [];
+            for (var cli = 0; cli < csvLines.length; cli++) {
+              if (csvLines[cli].trim() === "") continue;
+              csvRows.push(csvLines[cli].split(sep).map(function(c) { return c.trim(); }));
+            }
+            csvLines = null; /* liberar memoria */
+            setFS(csvRows.length - 1 + " filas leidas de " + file.name + ". Procesando...");
+            /* Detectar tipo por headers */
+            var csvH = (csvRows[0] || []).map(function(h) { return String(h).toUpperCase(); });
+            var esMarc = csvH.some(function(h) { return h.indexOf("IDENTIFICACION") >= 0 || h === "CODEMPLEADO"; }) && csvH.some(function(h) { return h === "HORA" || h === "FUNCION"; });
+            var esFact = csvH.some(function(h) { return h.indexOf("FACT") >= 0; }) && csvH.some(function(h) { return h.indexOf("VENTA") >= 0 || h.indexOf("CLASE") >= 0; });
+            if (esMarc) {
+              result.marc = procBase(csvRows);
+              setFS(result.marc.length + " marcaciones procesadas de " + file.name);
+            } else if (esFact) {
+              result.fact = procFact(csvRows);
+              setFS(result.fact.length + " facturas procesadas de " + file.name);
+            } else {
+              /* Intentar como marcaciones por defecto */
+              result.marc = procBase(csvRows);
+              if (result.marc.length > 0) {
+                setFS(result.marc.length + " marcaciones procesadas de " + file.name);
+              } else {
+                setFS("No se pudo identificar el tipo de CSV: " + file.name);
+              }
+            }
+            continue;
+          }
+
           if (file.name.endsWith(".json")) {
             var text = await file.text();
             var json = JSON.parse(text);
@@ -2808,6 +2846,7 @@ function App() {
           }
 
           var buf = await file.arrayBuffer();
+          setFS("Parseando Excel: " + file.name + " (" + (file.size / 1048576).toFixed(1) + " MB) — esto puede tardar...");
           // NO usar cellDates - las horas vienen como fracciones (0 a 1) que son mas faciles de parsear
           var wb = XLSX.read(buf, {type:"array"});
 
@@ -3008,7 +3047,7 @@ function App() {
           <div onClick={function(){if(fRef.current)fRef.current.click();}} style={{padding:48,borderRadius:16,cursor:"pointer",textAlign:"center",border:"2px dashed "+C.bd,background:"linear-gradient(145deg,"+C.sa+",#fff)",transition:"border-color 0.2s, background 0.2s"}}
             onMouseEnter={function(e){e.currentTarget.style.borderColor=C.p;e.currentTarget.style.background="linear-gradient(145deg,rgba(31,107,46,0.06),#fff)";}}
             onMouseLeave={function(e){e.currentTarget.style.borderColor=C.bd;e.currentTarget.style.background="linear-gradient(145deg,"+C.sa+",#fff)";}}>
-            <input ref={fRef} type="file" multiple accept=".xlsx,.xlsm,.json,.csv" style={{display:"none"}} onChange={doUpload} />
+            <input ref={fRef} type="file" multiple accept=".xlsx,.xlsm,.xls,.json,.csv,.tsv,.txt" style={{display:"none"}} onChange={doUpload} />
             {proc
               ? <p style={{color:C.p,margin:0,fontSize:13,fontWeight:600}}>{fSt}</p>
               : <div>
