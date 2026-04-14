@@ -331,11 +331,19 @@ function procFact(rows) {
   if (iNFact < 0) iNFact = 6;
   if (iVenta < 0) iVenta = headers.length - 1;
 
+  /* Detectar columna Semana si existe — filtrar subtotales de semana para evitar doble conteo */
+  var iSemana = headers.findIndex(function(h){ return h === "SEMANA"; });
+
   var results = [];
   for (var i = 1; i < rows.length; i++) {
     var w = rows[i];
     if (!w) continue;
     var hora = w[iHora], mes = w[iMes], dia = w[iDia], nf = w[iNFact];
+    /* Si existe columna Semana, excluir filas donde Semana = "Total" (son subtotales) */
+    if (iSemana >= 0) {
+      var sem = w[iSemana];
+      if (sem == null || String(sem) === "Total") continue;
+    }
     if (hora != null && !isNaN(Number(hora)) && String(hora) !== "Total"
       && mes != null && String(mes) !== "Total"
       && dia != null && String(dia) !== "Total"
@@ -763,12 +771,12 @@ function Tip(props) {
   if (!props.active || !props.payload || !props.payload.length) return null;
   return (
     <div style={{background:"rgba(10,15,26,0.95)",border:"1px solid "+C.bd,borderRadius:9,padding:"9px 13px"}}>
-      <p style={{color:C.w,fontWeight:600,fontSize:12,margin:"0 0 5px"}}>{props.label}</p>
+      <p style={{color:"#f0f5f1",fontWeight:600,fontSize:12,margin:"0 0 5px"}}>{props.label}</p>
       {props.payload.map(function(p,i) {
         return <div key={i} style={{display:"flex",alignItems:"center",gap:5,marginBottom:2}}>
           <div style={{width:7,height:7,borderRadius:2,background:p.color}} />
-          <span style={{color:C.tm,fontSize:10}}>{p.name}:</span>
-          <span style={{color:C.w,fontSize:11,fontWeight:600}}>{p.value}</span>
+          <span style={{color:"#a3b8aa",fontSize:10}}>{p.name}:</span>
+          <span style={{color:"#ffffff",fontSize:11,fontWeight:600}}>{typeof p.value === "number" ? p.value.toLocaleString() : p.value}</span>
         </div>;
       })}
     </div>
