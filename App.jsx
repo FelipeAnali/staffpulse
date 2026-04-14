@@ -309,18 +309,38 @@ function procBase(rows) {
 /* === PROCESS FACTURAS === */
 function procFact(rows) {
   if (!rows || rows.length < 2) return [];
+  /* Mapear columnas por nombre de header en vez de posición fija */
+  var headers = (rows[0]||[]).map(function(h){ return String(h||"").trim().toUpperCase(); });
+  var iSeccion = headers.findIndex(function(h){ return h.indexOf("DESC_CRI")>=0 || h.indexOf("SECCION")>=0; });
+  var iClase   = headers.findIndex(function(h){ return h === "CLASE"; });
+  var iSede    = headers.findIndex(function(h){ return h.indexOf("F285")>=0 || h.indexOf("SEDE")>=0 || h.indexOf("DESCRIPCION")>=0; });
+  var iHora    = headers.findIndex(function(h){ return h === "HORAS" || h === "HORA"; });
+  var iMes     = headers.findIndex(function(h){ return h.indexOf("MES")>=0; });
+  var iDia     = headers.findIndex(function(h){ return h.indexOf("DÍA")>=0 || h.indexOf("DIA")>=0; });
+  var iNFact   = headers.findIndex(function(h){ return h.indexOf("# FACT")>=0 || h.indexOf("FACT")>=0 && h.indexOf("FECHA")<0; });
+  var iCantReg = headers.findIndex(function(h){ return h.indexOf("CANT REG")>=0 || h.indexOf("CANT_REG")>=0; });
+  var iVenta   = headers.findIndex(function(h){ return h === "VENTA" || h.indexOf("VENTA")>=0; });
+  
+  /* Fallback a posiciones fijas si no se encuentran headers */
+  if (iSeccion < 0) iSeccion = 0;
+  if (iClase < 0) iClase = 1;
+  if (iSede < 0) iSede = 2;
+  if (iHora < 0) iHora = 3;
+  if (iMes < 0) iMes = 4;
+  if (iDia < 0) iDia = 5;
+  if (iNFact < 0) iNFact = 6;
+  if (iVenta < 0) iVenta = headers.length - 1;
+
   var results = [];
   for (var i = 1; i < rows.length; i++) {
     var w = rows[i];
     if (!w) continue;
-    var hora = w[3], mes = w[4], dia = w[5], semana = w[6], nf = w[7];
-    /* Filtrar subtotales: hora debe ser numero, mes/dia/semana no pueden ser "Total" ni null */
-    if (hora != null && !isNaN(Number(hora))
+    var hora = w[iHora], mes = w[iMes], dia = w[iDia], nf = w[iNFact];
+    if (hora != null && !isNaN(Number(hora)) && String(hora) !== "Total"
       && mes != null && String(mes) !== "Total"
       && dia != null && String(dia) !== "Total"
-      && semana != null && String(semana) !== "Total"
       && nf != null && String(nf) !== "Total") {
-      results.push({seccion:String(w[0]||""),clase:String(w[1]||""),sede:normSede(w[2]),hora:Number(hora),mes:String(mes),dia:Number(dia)||0,semana:Number(semana)||0,nfact:Number(nf)||0,venta:Number(w[9])||0});
+      results.push({seccion:String(w[iSeccion]||""),clase:String(w[iClase]||""),sede:normSede(w[iSede]),hora:Number(hora),mes:String(mes),dia:Number(dia)||0,nfact:Number(nf)||0,venta:Number(w[iVenta])||0});
     }
   }
   return results;
@@ -348,6 +368,7 @@ function buildChart(marc, fact, f) {
   const ff = fact.filter(function(x) {
     if (f.sede  !== "Todas" && x.sede  !== f.sede)  return false;
     if (f.clase !== "Todas" && x.clase !== f.clase) return false;
+    if (f.mes   !== "Todos" && x.mes   !== f.mes)   return false;
     return true;
   });
 
@@ -770,6 +791,9 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
   const [pagina, setPagina] = useState(0);
   const REGISTROS_POR_PAGINA = 50;
 
+  /* Reset filtros cuando cambian los datos cargados */
+  useEffect(() => { setFiltros(filtrosDefault); setPagina(0); setBusqueda(""); }, [marcaciones.length, facturas.length]);
+
   // -- Opciones dinamicas de filtros --
   const opcionesFiltros = useMemo(() => {
     const sedes = {}, secciones = {}, clases = {}, meses = {}, semanas = {}, dias = {}, sedesFacturas = {};
@@ -786,6 +810,7 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
       if (f.clase) clases[f.clase] = 1;
       if (f.sede) sedesFacturas[f.sede] = 1;
       if (f.seccion) secciones[f.seccion] = 1;
+      if (f.mes) meses[f.mes] = 1;
     });
 
     Object.keys(sedesFacturas).forEach((k) => { sedes[k] = 1; });
@@ -886,7 +911,7 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
   if (opcionesFiltros.sedes.length > 1) filtrosVisibles.push({ label: "Sede", key: "sede", opts: opcionesFiltros.sedes });
   if (hasMarc && opcionesFiltros.secciones.length > 1) filtrosVisibles.push({ label: "Seccion", key: "seccion", opts: opcionesFiltros.secciones });
   if (hasFact && opcionesFiltros.clases.length > 1) filtrosVisibles.push({ label: "Clase", key: "clase", opts: opcionesFiltros.clases });
-  if (hasMarc && opcionesFiltros.meses.length > 1) filtrosVisibles.push({ label: "Mes", key: "mes", opts: opcionesFiltros.meses });
+  if (opcionesFiltros.meses.length > 1) filtrosVisibles.push({ label: "Mes", key: "mes", opts: opcionesFiltros.meses });
   if (hasMarc) filtrosVisibles.push({ label: "DiaSem", key: "dsem", opts: opcionesFiltros.diasSemana });
   if (hasMarc && opcionesFiltros.semanas.length > 1) filtrosVisibles.push({ label: "Semana", key: "semana", opts: opcionesFiltros.semanas });
   if (hasMarc && opcionesFiltros.dias.length > 1) filtrosVisibles.push({ label: "Dia", key: "dia", opts: opcionesFiltros.dias });
@@ -1962,9 +1987,11 @@ function EficienciaView({ marc, fact }) {
   }, [marc]);
   const meses = useMemo(() => {
     const ORD = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
-    const s = {}; marc.forEach(m => { if (m.MES) s[m.MES] = 1; });
+    const s = {};
+    marc.forEach(m => { if (m.MES) s[m.MES] = 1; });
+    fact.forEach(f => { if (f.mes) s[f.mes] = 1; });
     return ["Todos", ...Object.keys(s).sort((a,b) => ORD.indexOf(a)-ORD.indexOf(b))];
-  }, [marc]);
+  }, [marc, fact]);
 
   const [sede, setSede] = useState("Todas");
   const [mes,  setMes]  = useState("Todos");
