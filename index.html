@@ -6,6 +6,7 @@
   <title>StaffPulse – Supertiendas Cañaveral</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/prop-types@15/prop-types.min.js"></script>
   <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
   <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -15,11 +16,22 @@
   <div id="root"></div>
   <script type="text/babel">
 const { useState, useMemo, useRef, useEffect } = React;
-const {
-  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  Legend, ResponsiveContainer, RadarChart, Radar,
-  PolarGrid, PolarAngleAxis, PolarRadiusAxis
-} = Recharts;
+// Recharts desde CDN UMD
+const _RC = window.Recharts || window.RechartsLib || {};
+const ComposedChart = _RC.ComposedChart;
+const Bar = _RC.Bar;
+const Line = _RC.Line;
+const XAxis = _RC.XAxis;
+const YAxis = _RC.YAxis;
+const CartesianGrid = _RC.CartesianGrid;
+const Tooltip = _RC.Tooltip;
+const Legend = _RC.Legend;
+const ResponsiveContainer = _RC.ResponsiveContainer;
+const RadarChart = _RC.RadarChart;
+const Radar = _RC.Radar;
+const PolarGrid = _RC.PolarGrid;
+const PolarAngleAxis = _RC.PolarAngleAxis;
+const PolarRadiusAxis = _RC.PolarRadiusAxis;
 
 
 /* Fuente moderna */
