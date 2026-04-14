@@ -394,6 +394,7 @@ function buildChart(marc, fact, f) {
     if (f.sede  !== "Todas" && x.sede  !== f.sede)  return false;
     if (f.clase !== "Todas" && x.clase !== f.clase) return false;
     if (f.mes   !== "Todos" && x.mes   !== f.mes)   return false;
+    if (f.dia   !== "Todos" && String(x.dia) !== f.dia) return false;
     return true;
   });
 
@@ -836,6 +837,7 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
       if (f.sede) sedesFacturas[f.sede] = 1;
       if (f.seccion) secciones[f.seccion] = 1;
       if (f.mes) meses[f.mes] = 1;
+      if (f.dia != null && f.dia > 0) dias[String(f.dia)] = 1;
     });
 
     Object.keys(sedesFacturas).forEach((k) => { sedes[k] = 1; });
@@ -939,7 +941,7 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
   if (opcionesFiltros.meses.length > 1) filtrosVisibles.push({ label: "Mes", key: "mes", opts: opcionesFiltros.meses });
   if (hasMarc) filtrosVisibles.push({ label: "DiaSem", key: "dsem", opts: opcionesFiltros.diasSemana });
   if (hasMarc && opcionesFiltros.semanas.length > 1) filtrosVisibles.push({ label: "Semana", key: "semana", opts: opcionesFiltros.semanas });
-  if (hasMarc && opcionesFiltros.dias.length > 1) filtrosVisibles.push({ label: "Dia", key: "dia", opts: opcionesFiltros.dias });
+  if (opcionesFiltros.dias.length > 1) filtrosVisibles.push({ label: "Dia", key: "dia", opts: opcionesFiltros.dias });
   if (hasMarc) filtrosVisibles.push({ label: "Quincena", key: "quincena", opts: ["Todos", "Quincena", "No Quincena"] });
 
   // -- Paginacion --
