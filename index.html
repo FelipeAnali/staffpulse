@@ -96,6 +96,7 @@ function normSede(raw) {
   s = s.replace(/^SC\s+/, "");        // SC VILLANUEVA    → VILLANUEVA
   s = s.replace(/^SC(?=[A-Z\u00C0-\u00FF])/, ""); // SCVILLAGORGONA → VILLAGORGONA
   s = s.trim();
+  if (!s) return "";
   // Ahora siempre agregar "SC " al inicio
   return "SC " + s;                   // → SC VILLANUEVA, SC ZARZAL, SC PASOANCHO
 }
@@ -192,7 +193,9 @@ function procBase(rows) {
       
       // LLEGADA DE BREAK / LLEGADA DE BREAK 1 / LLEGADA DE BREAK 2
       if (fn.startsWith("LLEGADA DE BREAK") && breakOutH !== null) {
-        const duracionMin = Math.round((h - breakOutH) * 60);
+        const duracionMinRaw = Math.round((h - breakOutH) * 60);
+        if (duracionMinRaw <= 0) { breakOutH = null; continue; }
+        const duracionMin = duracionMinRaw;
         
         let tipo;
         if (duracionMin < UMBRAL_TURNO_PARTIDO) {
@@ -205,7 +208,7 @@ function procBase(rows) {
 
         breakPairs.push({
           salidaH: breakOutH, llegadaH: h,
-          duracionMin: Math.max(0, duracionMin), tipo,
+          duracionMin, tipo,
         });
         breakOutH = null;
       }
@@ -374,6 +377,7 @@ function procFact(rows) {
 /* === BUILD CHART DATA === */
 // Precalcular los índices numéricos de HC una sola vez
 var HC_NUM = HC.map(function(hc){ return parseInt(hc.split(":")[0]); });
+var HC_MAP = {}; HC_NUM.forEach(function(h, i){ HC_MAP[h] = i; });
 
 function buildChart(marc, fact, f) {
   // -- Aplicar todos los filtros en UN SOLO recorrido sobre marcaciones --
@@ -1482,6 +1486,7 @@ function PolView({ marc: marcaciones = [] }) {
     let idx = 0;
     function processChunk() {
       if (cancelled) return;
+      try {
       const end = Math.min(idx + CHUNK, empleados.length);
       for (let ei = idx; ei < end; ei++) {
         const emp = empleados[ei];
@@ -1532,6 +1537,7 @@ function PolView({ marc: marcaciones = [] }) {
         });
         if (!cancelled) { setResultado({ politicas, totalEmpleados }); setCalculando(false); }
       }
+      } catch(chunkErr) { console.error("Error en processChunk:", chunkErr); if (!cancelled) setCalculando(false); }
     }
     setTimeout(processChunk, 50);
     return () => { cancelled = true; };
@@ -2017,7 +2023,7 @@ function EficienciaView({ marc, fact }) {
     const s = {};
     marc.forEach(m => { if (m.MES) s[m.MES] = 1; });
     fact.forEach(f => { if (f.mes) s[f.mes] = 1; });
-    return ["Todos", ...Object.keys(s).sort((a,b) => ORD.indexOf(a)-ORD.indexOf(b))];
+    return ["Todos", ...Object.keys(s).sort((a,b) => ORD.indexOf(a.toLowerCase().trim())-ORD.indexOf(b.toLowerCase().trim()))];
   }, [marc, fact]);
 
   const [sede, setSede] = useState("Todas");
@@ -2189,7 +2195,7 @@ function RiesgoView({ marc }) {
   const meses = useMemo(() => {
     const ORD=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
     const s={}; marc.forEach(m=>{if(m.MES)s[m.MES]=1;});
-    return ["Todos",...Object.keys(s).sort((a,b)=>ORD.indexOf(a)-ORD.indexOf(b))];
+    return ["Todos",...Object.keys(s).sort((a,b)=>ORD.indexOf(a.toLowerCase().trim())-ORD.indexOf(b.toLowerCase().trim()))];
   }, [marc]);
 
   const [riesgoResult, setRiesgoResult] = useState({ politicas: [], ranking: [] });
@@ -2361,7 +2367,7 @@ function TendenciaView({ marc }) {
 
   useEffect(() => {
     const mesesSet={}; marc.forEach(m=>{if(m.MES)mesesSet[m.MES]=1;});
-    const mesesLista = Object.keys(mesesSet).sort((a,b)=>ORD_MES.indexOf(a)-ORD_MES.indexOf(b));
+    const mesesLista = Object.keys(mesesSet).sort((a,b)=>ORD_MES.indexOf(a.toLowerCase().trim())-ORD_MES.indexOf(b.toLowerCase().trim()));
     if (mesesLista.length < 2) { setTendencia({ series:[], hayPocosDatos:true }); return; }
     setTendCalc(true);
     let cancelled = false;
@@ -2942,7 +2948,7 @@ function MasterFilterModal({ data, masterFilter, setMasterFilter, filteredData, 
   });
   var sedesList = Object.keys(allSedes).sort();
   var ORD_MES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
-  var mesesList = Object.keys(allMeses).sort(function(a,b){ return ORD_MES.indexOf(a) - ORD_MES.indexOf(b); });
+  var mesesList = Object.keys(allMeses).sort(function(a,b){ return ORD_MES.indexOf(a.toLowerCase().trim()) - ORD_MES.indexOf(b.toLowerCase().trim()); });
 
   var sedeSel = masterFilter.sedes ? Object.keys(masterFilter.sedes).find(function(k){ return masterFilter.sedes[k]; }) : null;
   var _busq = useState(""), busqSede = _busq[0], setBusqSede = _busq[1];
@@ -3273,9 +3279,8 @@ function App() {
   };
 
   var expMem = function() {
-    var marcClean = limpiarMarc(filteredData.marc);
     var sedeName = masterFilter.sedes ? Object.keys(masterFilter.sedes).find(function(k){return masterFilter.sedes[k];}) || "" : "";
-    var jsonStr = JSON.stringify({_type:"seguimiento_memory",_v:2,marcaciones:marcClean,facturas:filteredData.fact}, null, 2);
+    var jsonStr = JSON.stringify({_type:"seguimiento_memory",_v:2,marcaciones:filteredData.marc,facturas:filteredData.fact}, null, 2);
     var fecha = new Date().toISOString().slice(0,10);
     var nombre = "seguimiento_memoria_" + (sedeName ? sedeName.replace(/\s+/g,"_") + "_" : "") + fecha + ".json";
     descargarArchivo(jsonStr, nombre, "application/json");
