@@ -3255,6 +3255,20 @@ function App() {
     descargarArchivo(lines.join("\n"), "seguimiento_datos_" + fecha + ".txt", "text/plain");
   };
 
+  /* Filtro maestro: filtra datos ANTES de pasarlos a cualquier vista */
+  var filteredData = useMemo(function() {
+    var mf = masterFilter;
+    var fm = data.marc;
+    var ff = data.fact;
+    if (mf.sedes) fm = fm.filter(function(m){ return mf.sedes[m.DEPENDENCIA]; });
+    if (mf.meses) fm = fm.filter(function(m){ return mf.meses[m.MES]; });
+    if (mf.secciones) fm = fm.filter(function(m){ return mf.secciones[m.CENTROCOSTO]; });
+    if (mf.sedes) ff = ff.filter(function(f){ return mf.sedes[f.sede]; });
+    if (mf.meses) ff = ff.filter(function(f){ return mf.meses[f.mes]; });
+    if (mf.clases) ff = ff.filter(function(f){ return mf.clases[f.clase]; });
+    return { marc: fm, fact: ff };
+  }, [data, masterFilter]);
+
   /* === LOGIN === */
   if (!user) {
     return (
@@ -3296,19 +3310,6 @@ function App() {
   }
 
   /* === MAIN LAYOUT === */
-  /* Filtro maestro: filtra datos ANTES de pasarlos a cualquier vista */
-  var filteredData = useMemo(function() {
-    var mf = masterFilter;
-    var fm = data.marc;
-    var ff = data.fact;
-    if (mf.sedes) fm = fm.filter(function(m){ return mf.sedes[m.DEPENDENCIA]; });
-    if (mf.meses) fm = fm.filter(function(m){ return mf.meses[m.MES]; });
-    if (mf.secciones) fm = fm.filter(function(m){ return mf.secciones[m.CENTROCOSTO]; });
-    if (mf.sedes) ff = ff.filter(function(f){ return mf.sedes[f.sede]; });
-    if (mf.meses) ff = ff.filter(function(f){ return mf.meses[f.mes]; });
-    if (mf.clases) ff = ff.filter(function(f){ return mf.clases[f.clase]; });
-    return { marc: fm, fact: ff };
-  }, [data, masterFilter]);
   var has = filteredData.marc.length > 0 || filteredData.fact.length > 0;
   var hasMarc = filteredData.marc.length > 0;
   var hasFact = filteredData.fact.length > 0;
