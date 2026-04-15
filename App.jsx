@@ -2925,6 +2925,7 @@ function App() {
   var _sp = useState(false), showP = _sp[0], setSP = _sp[1];
   var _fs = useState(""), fSt = _fs[0], setFS = _fs[1];
   var _pr = useState(false), proc = _pr[0], setProc = _pr[1];
+  var _cr = useState(false), confirmReset = _cr[0], setConfirmReset = _cr[1];
   var fRef = useRef(null);
 
   /* Actualizar tema global en cada render */
@@ -3435,7 +3436,7 @@ function App() {
               </div>}
             </div>}
             {has && <button
-              onClick={function(){if(confirm("¿Reiniciar? Se borrarán los datos cargados.")){setData({marc:[],fact:[]});setFS("");setView("upload");}}}
+              onClick={function(){setConfirmReset(true);}}
               style={{padding:"7px 12px",borderRadius:8,fontSize:12,fontWeight:500,
                 background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.2)",
                 color:"#ef4444",cursor:"pointer",transition:"all 0.15s"}}>
@@ -3454,6 +3455,19 @@ function App() {
           </div>
         </div>
       </div>
+
+      {confirmReset && (
+        <div style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={function(){setConfirmReset(false);}}>
+          <div style={{background:C.sf,borderRadius:16,padding:28,width:360,maxWidth:"90vw",boxShadow:"0 24px 60px rgba(0,0,0,0.3)",border:"1px solid "+C.bd}} onClick={function(e){e.stopPropagation();}}>
+            <div style={{fontSize:15,fontWeight:700,color:C.t,marginBottom:8}}>¿Reiniciar datos?</div>
+            <p style={{fontSize:12,color:C.td,marginBottom:20}}>Se borrarán todas las marcaciones y facturas cargadas. Esta acción no se puede deshacer.</p>
+            <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+              <button onClick={function(){setConfirmReset(false);}} style={{padding:"8px 16px",borderRadius:8,fontSize:12,border:"1px solid "+C.bd,background:"transparent",color:C.tm,cursor:"pointer"}}>Cancelar</button>
+              <button onClick={function(){setData({marc:[],fact:[]});setFS("");setView("upload");setConfirmReset(false);}} style={{padding:"8px 16px",borderRadius:8,fontSize:12,fontWeight:700,background:"#ef4444",border:"none",color:"#fff",cursor:"pointer"}}>Sí, reiniciar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
