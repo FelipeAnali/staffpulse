@@ -850,7 +850,7 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
       sedes: ["Todas", ...Object.keys(sedes)],
       secciones: ["Todas", ...Object.keys(secciones)],
       clases: ["Todas", ...Object.keys(clases)],
-      meses: ["Todos", ...Object.keys(meses)],
+      meses: (function(){ var ORD=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"]; return ["Todos", ...Object.keys(meses).sort(function(a,b){ return ORD.indexOf(a.toLowerCase().trim()) - ORD.indexOf(b.toLowerCase().trim()); })]; })(),
       diasSemana: ["Todos", "Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado", "Domingo"],
       semanas: ["Todas", ...Object.keys(semanas)],
       dias: ["Todos", ...Object.keys(dias).sort((a, b) => (+a) - (+b))],
@@ -1435,7 +1435,7 @@ function PolView({ marc: marcaciones = [] }) {
     const ORDEN = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
     const s = {};
     marcaciones.forEach((m) => { if (m.MES) s[m.MES] = 1; });
-    const lista = Object.keys(s).sort((a, b) => ORDEN.indexOf(a.toLowerCase()) - ORDEN.indexOf(b.toLowerCase()));
+    const lista = Object.keys(s).sort((a, b) => ORDEN.indexOf(a.toLowerCase().trim()) - ORDEN.indexOf(b.toLowerCase().trim()));
     return ["Todos", ...lista];
   }, [marcaciones]);
 
