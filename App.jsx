@@ -2914,103 +2914,119 @@ function AuditoriaView({ marc: marcaciones = [] }) {
 
 /* === MAIN APP === */
 function MasterFilterModal({ data, masterFilter, setMasterFilter, filteredData, onClose }) {
-  var allSedes = {}, allMeses = {}, allClases = {}, allSecciones = {};
+  var allSedes = {}, allMeses = {};
   data.marc.forEach(function(m) {
-    if (m.DEPENDENCIA) allSedes[m.DEPENDENCIA] = 1;
+    if (m.DEPENDENCIA) allSedes[m.DEPENDENCIA] = (allSedes[m.DEPENDENCIA]||0) + 1;
     if (m.MES) allMeses[m.MES] = 1;
-    if (m.CENTROCOSTO) allSecciones[m.CENTROCOSTO] = 1;
   });
   data.fact.forEach(function(f) {
-    if (f.sede) allSedes[f.sede] = 1;
+    if (f.sede) allSedes[f.sede] = (allSedes[f.sede]||0);
     if (f.mes) allMeses[f.mes] = 1;
-    if (f.clase) allClases[f.clase] = 1;
   });
-  var ORD_MES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
   var sedesList = Object.keys(allSedes).sort();
+  var ORD_MES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
   var mesesList = Object.keys(allMeses).sort(function(a,b){ return ORD_MES.indexOf(a) - ORD_MES.indexOf(b); });
-  var clasesList = Object.keys(allClases).sort();
-  var seccionesList = Object.keys(allSecciones).sort();
-  var lists = {sedes:sedesList,meses:mesesList,clases:clasesList,secciones:seccionesList};
 
-  function toggleItem(category, key) {
+  var sedeSel = masterFilter.sedes ? Object.keys(masterFilter.sedes).find(function(k){ return masterFilter.sedes[k]; }) : null;
+  var _busq = useState(""), busqSede = _busq[0], setBusqSede = _busq[1];
+  var sedesFiltradas = busqSede.trim() ? sedesList.filter(function(s){ return s.toLowerCase().indexOf(busqSede.trim().toLowerCase()) >= 0; }) : sedesList;
+
+  function selSede(sede) {
+    if (!sede) {
+      setMasterFilter(function(p){ return Object.assign({},p,{sedes:null}); });
+    } else {
+      var obj = {}; obj[sede] = true;
+      setMasterFilter(function(p){ return Object.assign({},p,{sedes:obj}); });
+    }
+  }
+
+  function toggleMes(mes) {
     setMasterFilter(function(prev) {
-      var list = lists[category];
-      var cur = prev[category];
+      var cur = prev.meses;
       if (!cur) {
-        var obj = {};
-        list.forEach(function(k){ obj[k] = true; });
-        obj[key] = false;
+        var obj = {}; mesesList.forEach(function(m){ obj[m] = true; }); obj[mes] = false;
         var anyOn = Object.values(obj).some(function(v){ return v; });
-        var o = {}; o[category] = anyOn ? obj : null;
-        return Object.assign({}, prev, o);
+        return Object.assign({}, prev, {meses: anyOn ? obj : null});
       }
-      var next = Object.assign({}, cur);
-      next[key] = !next[key];
+      var next = Object.assign({}, cur); next[mes] = !next[mes];
       var anyOn = Object.values(next).some(function(v){ return v; });
       var allOn = Object.values(next).every(function(v){ return v; });
-      var o = {}; o[category] = allOn ? null : (anyOn ? next : null);
-      return Object.assign({}, prev, o);
+      return Object.assign({}, prev, {meses: allOn ? null : (anyOn ? next : null)});
     });
   }
 
-  function countActive(category) {
-    var cur = masterFilter[category];
-    if (!cur) return "Todas";
-    var n = Object.values(cur).filter(function(v){ return v; }).length;
-    return n + " de " + lists[category].length;
-  }
-
-  function renderSection(title, category, list) {
-    if (list.length === 0) return null;
-    var isAllOn = !masterFilter[category];
-    var curMap = masterFilter[category] || {};
-    return (
-      <div key={category} style={{marginBottom:16}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-          <span style={{fontSize:12,fontWeight:700,color:C.t,textTransform:"uppercase",letterSpacing:"0.5px"}}>{title}</span>
-          <div style={{display:"flex",gap:6,alignItems:"center"}}>
-            <span style={{fontSize:10,color:C.td}}>{countActive(category)}</span>
-            <button onClick={function(){setMasterFilter(function(prev){var o={};o[category]=null;return Object.assign({},prev,o);});}}
-              style={{padding:"3px 8px",borderRadius:5,fontSize:9,border:"1px solid "+C.bd,background:isAllOn?C.pg:"transparent",color:isAllOn?C.p:C.tm,cursor:"pointer",fontWeight:600}}>Todas</button>
-          </div>
-        </div>
-        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-          {list.map(function(item) {
-            var on = isAllOn || (curMap[item] === true);
-            return <button key={item} onClick={function(){toggleItem(category, item);}}
-              style={{padding:"6px 12px",borderRadius:8,fontSize:11,fontWeight:on?600:400,
-                background:on?C.pg:"transparent",border:"1px solid "+(on?C.p:C.bd),
-                color:on?C.p:C.td,cursor:"pointer",transition:"all 0.15s"}}>{item}</button>;
-          })}
-        </div>
-      </div>
-    );
-  }
+  var allMesesOn = !masterFilter.meses;
+  var curMeses = masterFilter.meses || {};
+  var totalRaw = data.marc.length + data.fact.length;
+  var totalFiltered = filteredData.marc.length + filteredData.fact.length;
 
   return (
     <div style={{position:"fixed",inset:0,zIndex:9998,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
-      <div style={{background:C.sf,borderRadius:20,width:680,maxWidth:"95vw",maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 24px 60px rgba(0,0,0,0.3)",border:"1px solid "+C.bd,overflow:"hidden"}} onClick={function(e){e.stopPropagation();}}>
-        <div style={{background:"linear-gradient(135deg,#0f1f13,#1f6b2e)",padding:"18px 24px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
-          <div>
-            <div style={{color:"#e8f5eb",fontSize:16,fontWeight:800}}>Filtro Maestro</div>
-            <div style={{color:"#7aab85",fontSize:11,marginTop:3}}>Selecciona qué datos quieres analizar en toda la app</div>
+      <div style={{background:C.sf,borderRadius:20,width:520,maxWidth:"95vw",maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 24px 60px rgba(0,0,0,0.3)",border:"1px solid "+C.bd,overflow:"hidden"}} onClick={function(e){e.stopPropagation();}}>
+
+        <div style={{background:"linear-gradient(135deg,#0f1f13,#1f6b2e)",padding:"18px 24px",flexShrink:0}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <div style={{color:"#e8f5eb",fontSize:16,fontWeight:800}}>Filtro Maestro</div>
+              <div style={{color:"#7aab85",fontSize:11,marginTop:3}}>Filtra datos para una sede específica antes de exportar</div>
+            </div>
+            <button onClick={onClose} style={{width:32,height:32,borderRadius:8,background:"rgba(255,255,255,0.1)",border:"none",color:"#e8f5eb",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
           </div>
-          <button onClick={onClose} style={{width:32,height:32,borderRadius:8,background:"rgba(255,255,255,0.1)",border:"none",color:"#e8f5eb",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
         </div>
+
         <div style={{flex:1,overflowY:"auto",padding:"20px 24px"}}>
-          {renderSection("Sedes", "sedes", sedesList)}
-          {renderSection("Meses", "meses", mesesList)}
-          {renderSection("Clases", "clases", clasesList)}
-          {renderSection("Secciones", "secciones", seccionesList)}
-        </div>
-        <div style={{padding:"14px 24px",borderTop:"1px solid "+C.bd,display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
-          <button onClick={function(){setMasterFilter({sedes:null,meses:null,clases:null,secciones:null});}}
-            style={{padding:"8px 16px",borderRadius:8,fontSize:11,border:"1px solid "+C.bd,background:"transparent",color:C.tm,cursor:"pointer"}}>Limpiar todo (ver todo)</button>
-          <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            <span style={{fontSize:11,color:C.td}}>{filteredData.marc.length.toLocaleString()} marc · {filteredData.fact.length.toLocaleString()} fact</span>
-            <button onClick={onClose}
-              style={{padding:"8px 20px",borderRadius:8,fontSize:12,fontWeight:700,background:"linear-gradient(135deg,#1f6b2e,#3a9a50)",border:"none",color:"#fff",cursor:"pointer",boxShadow:"0 2px 8px rgba(31,107,46,0.3)"}}>Aplicar y cerrar</button>
+
+          <div style={{marginBottom:20}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <span style={{fontSize:13,fontWeight:700,color:C.t}}>Sede</span>
+              {sedeSel && <button onClick={function(){selSede(null);}} style={{padding:"3px 10px",borderRadius:6,fontSize:10,border:"1px solid "+C.bd,background:"transparent",color:C.tm,cursor:"pointer"}}>Ver todas</button>}
+            </div>
+            <input value={busqSede} onChange={function(e){setBusqSede(e.target.value);}} placeholder="Buscar sede..." style={{width:"100%",boxSizing:"border-box",padding:"9px 12px",borderRadius:8,fontSize:12,background:C.sa,border:"1px solid "+C.bd,color:C.t,outline:"none",marginBottom:10}} />
+            <div style={{maxHeight:200,overflowY:"auto",border:"1px solid "+C.bd,borderRadius:10,background:C.sf}}>
+              <div onClick={function(){selSede(null);}} style={{padding:"10px 14px",cursor:"pointer",borderBottom:"1px solid "+C.bd,background:!sedeSel?C.pg:"transparent",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontSize:12,fontWeight:!sedeSel?700:400,color:!sedeSel?C.p:C.tm}}>Todas las sedes</span>
+                <span style={{fontSize:10,color:C.td}}>{sedesList.length} sedes</span>
+              </div>
+              {sedesFiltradas.map(function(sede) {
+                var activa = sedeSel === sede;
+                var cnt = allSedes[sede] || 0;
+                return (
+                  <div key={sede} onClick={function(){selSede(sede);}} style={{padding:"10px 14px",cursor:"pointer",borderBottom:"1px solid "+C.bd,background:activa?C.pg:"transparent",display:"flex",justifyContent:"space-between",alignItems:"center",transition:"background 0.1s"}}>
+                    <span style={{fontSize:12,fontWeight:activa?700:400,color:activa?C.p:C.t}}>{sede}</span>
+                    <span style={{fontSize:10,color:C.td}}>{cnt.toLocaleString()} reg</span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
+
+          {mesesList.length > 1 && (
+            <div style={{marginBottom:16}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                <span style={{fontSize:13,fontWeight:700,color:C.t}}>Meses</span>
+                <button onClick={function(){setMasterFilter(function(p){return Object.assign({},p,{meses:null});});}} style={{padding:"3px 10px",borderRadius:6,fontSize:10,border:"1px solid "+C.bd,background:allMesesOn?C.pg:"transparent",color:allMesesOn?C.p:C.tm,cursor:"pointer",fontWeight:600}}>Todos</button>
+              </div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                {mesesList.map(function(mes) {
+                  var on = allMesesOn || curMeses[mes] === true;
+                  return <button key={mes} onClick={function(){toggleMes(mes);}} style={{padding:"8px 16px",borderRadius:10,fontSize:12,fontWeight:on?700:400,background:on?C.pg:"transparent",border:"2px solid "+(on?C.p:C.bd),color:on?C.p:C.td,cursor:"pointer",transition:"all 0.15s",minWidth:80,textTransform:"capitalize"}}>{mes}</button>;
+                })}
+              </div>
+            </div>
+          )}
+
+          {sedeSel && (
+            <div style={{padding:14,borderRadius:12,background:"rgba(31,107,46,0.06)",border:"1px solid rgba(31,107,46,0.15)",marginTop:8}}>
+              <div style={{fontSize:11,color:C.p,fontWeight:600,marginBottom:4}}>Datos filtrados para: {sedeSel}</div>
+              <div style={{fontSize:12,color:C.tm}}>{filteredData.marc.length.toLocaleString()} marcaciones · {filteredData.fact.length.toLocaleString()} facturas</div>
+              <div style={{fontSize:10,color:C.td,marginTop:4}}>Al exportar la memoria digital, solo incluirá estos datos</div>
+            </div>
+          )}
+        </div>
+
+        <div style={{padding:"14px 24px",borderTop:"1px solid "+C.bd,display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+          <button onClick={function(){setMasterFilter({sedes:null,meses:null,clases:null,secciones:null});}} style={{padding:"8px 16px",borderRadius:8,fontSize:11,border:"1px solid "+C.bd,background:"transparent",color:C.tm,cursor:"pointer"}}>Limpiar filtros</button>
+          <button onClick={onClose} style={{padding:"10px 24px",borderRadius:8,fontSize:13,fontWeight:700,background:"linear-gradient(135deg,#1f6b2e,#3a9a50)",border:"none",color:"#fff",cursor:"pointer",boxShadow:"0 2px 8px rgba(31,107,46,0.3)"}}>Aplicar</button>
         </div>
       </div>
     </div>
@@ -3240,19 +3256,22 @@ function App() {
   };
 
   var expMem = function() {
-    var marcClean = limpiarMarc(data.marc);
-    var jsonStr = JSON.stringify({_type:"seguimiento_memory",_v:2,marcaciones:marcClean,facturas:data.fact}, null, 2);
+    var marcClean = limpiarMarc(filteredData.marc);
+    var sedeName = masterFilter.sedes ? Object.keys(masterFilter.sedes).find(function(k){return masterFilter.sedes[k];}) || "" : "";
+    var jsonStr = JSON.stringify({_type:"seguimiento_memory",_v:2,marcaciones:marcClean,facturas:filteredData.fact}, null, 2);
     var fecha = new Date().toISOString().slice(0,10);
-    descargarArchivo(jsonStr, "seguimiento_memoria_" + fecha + ".json", "application/json");
+    var nombre = "seguimiento_memoria_" + (sedeName ? sedeName.replace(/\s+/g,"_") + "_" : "") + fecha + ".json";
+    descargarArchivo(jsonStr, nombre, "application/json");
   };
 
   var expXls = function() {
-    var marcClean = limpiarMarc(data.marc);
+    var marcClean = limpiarMarc(filteredData.marc);
     var keys = Object.keys(marcClean[0] || {});
     var lines = [keys.join("	")];
     marcClean.forEach(function(r) { lines.push(keys.map(function(k) { return r[k] != null ? String(r[k]) : ""; }).join("	")); });
     var fecha = new Date().toISOString().slice(0,10);
-    descargarArchivo(lines.join("\n"), "seguimiento_datos_" + fecha + ".txt", "text/plain");
+    var sedeName2 = masterFilter.sedes ? Object.keys(masterFilter.sedes).find(function(k){return masterFilter.sedes[k];}) || "" : "";
+    descargarArchivo(lines.join("\n"), "seguimiento_datos_" + (sedeName2 ? sedeName2.replace(/\s+/g,"_") + "_" : "") + fecha + ".txt", "text/plain");
   };
 
   /* Filtro maestro: filtra datos ANTES de pasarlos a cualquier vista */
