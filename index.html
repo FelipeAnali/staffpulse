@@ -1536,13 +1536,13 @@ function PolView({ marc: marcaciones = [], parametros, setParametros }) {
         });
         if (!cancelled) { setResultado({ politicas, totalEmpleados }); setCalculando(false); }
       }
-      } catch(chunkErr) { console.error("Error en processChunk:", chunkErr); if (!cancelled) setCalculando(false); }
+      } catch(chunkErr) { console.error("Error en processChunk:", chunkErr); if (!cancelled) { setCalculando(false); setResultado({ politicas: POLITICAS_DEF.map(p => ({...p, desc: p.descFn(parametros), violadores:[], empleadosAfectados:0, totalViolaciones:0, porcentaje:0, cumplimiento:100})), totalEmpleados: 0, error: "Error calculando politicas: " + chunkErr.message }); } }
     }
     setTimeout(processChunk, 50);
     return () => { cancelled = true; };
   }, [marcacionesFiltradas, parametros]);
 
-  const { politicas, totalEmpleados } = resultado;
+  const { politicas, totalEmpleados, error: polError } = resultado;
 
   const setParam = (clave, valor) => setParametros((prev) => ({ ...prev, [clave]: valor }));
   const resetParams = () => setParametros({ ...PARAMS_DEFAULT });
@@ -1701,6 +1701,8 @@ function PolView({ marc: marcaciones = [], parametros, setParametros }) {
           <p style={{color:C.td,fontSize:11,margin:"3px 0 0",display:"flex",alignItems:"center",gap:6}}>
             {calculando
               ? <><span style={{width:10,height:10,borderRadius:"50%",border:"2px solid "+C.p,borderTopColor:"transparent",display:"inline-block",animation:"spin 0.7s linear infinite"}} /><span style={{color:C.p}}>Calculando politicas... {progresoPol}%</span><span style={{width:80,height:4,background:C.bd,borderRadius:2,overflow:"hidden",display:"inline-block",marginLeft:6}}><span style={{width:progresoPol+"%",height:"100%",background:C.p,display:"block",borderRadius:2,transition:"width 0.2s"}} /></span></>
+              : polError
+              ? <span style={{color:C.dg}}>{polError}</span>
               : <span>{totalEmpleados} empleados evaluados {sedeSel !== "Todas" ? `en ${sedeSel}` : "en todas las sedes"}{mesSel !== "Todos" ? ` · ${mesSel}` : ""} | 9 politicas activas</span>
             }
           </p>
