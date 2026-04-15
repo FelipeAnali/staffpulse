@@ -1867,7 +1867,7 @@ function PolView({ marc: marcaciones = [] }) {
               <input value={busquedaPol} onChange={(e) => { setBusquedaPol(e.target.value); setPaginaPol(0); }}
                 placeholder="Buscar empleado, cargo..."
                 style={{padding:"6px 10px",borderRadius:7,fontSize:11,background:C.sa,border:"1px solid "+C.bd,color:C.t,outline:"none",width:200,boxSizing:"border-box"}} />
-              <button onClick={() => { setPolSeleccionada(null); setBusquedaPol(""); }}
+              <button onClick={() => { setPolSeleccionada(null); setBusquedaPol(""); setPaginaPol(0); }}
                 style={{padding:"6px 10px",borderRadius:7,fontSize:10,background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.2)",color:"#fca5a5",cursor:"pointer"}}>Cerrar</button>
             </div>
           </div>
