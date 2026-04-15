@@ -2926,6 +2926,8 @@ function App() {
   var _fs = useState(""), fSt = _fs[0], setFS = _fs[1];
   var _pr = useState(false), proc = _pr[0], setProc = _pr[1];
   var _cr = useState(false), confirmReset = _cr[0], setConfirmReset = _cr[1];
+  var _mf = useState({sedes:null,meses:null,clases:null,secciones:null}), masterFilter = _mf[0], setMasterFilter = _mf[1];
+  var _mfOpen = useState(false), masterFilterOpen = _mfOpen[0], setMasterFilterOpen = _mfOpen[1];
   var fRef = useRef(null);
 
   /* Actualizar tema global en cada render */
@@ -3110,6 +3112,8 @@ function App() {
             fact: result.fact.length > 0 ? result.fact : prev.fact
           };
         });
+        setMasterFilter({sedes:null,meses:null,clases:null,secciones:null});
+        setMasterFilterOpen(true);
       } catch (err) {
         setFS("Error al procesar: " + err.message);
         console.error("Upload error:", err);
@@ -3188,9 +3192,22 @@ function App() {
   }
 
   /* === MAIN LAYOUT === */
-  var has = data.marc.length > 0 || data.fact.length > 0;
-  var hasMarc = data.marc.length > 0;
-  var hasFact = data.fact.length > 0;
+  /* Filtro maestro: filtra datos ANTES de pasarlos a cualquier vista */
+  var filteredData = useMemo(function() {
+    var mf = masterFilter;
+    var fm = data.marc;
+    var ff = data.fact;
+    if (mf.sedes) fm = fm.filter(function(m){ return mf.sedes[m.DEPENDENCIA]; });
+    if (mf.meses) fm = fm.filter(function(m){ return mf.meses[m.MES]; });
+    if (mf.secciones) fm = fm.filter(function(m){ return mf.secciones[m.CENTROCOSTO]; });
+    if (mf.sedes) ff = ff.filter(function(f){ return mf.sedes[f.sede]; });
+    if (mf.meses) ff = ff.filter(function(f){ return mf.meses[f.mes]; });
+    if (mf.clases) ff = ff.filter(function(f){ return mf.clases[f.clase]; });
+    return { marc: fm, fact: ff };
+  }, [data, masterFilter]);
+  var has = filteredData.marc.length > 0 || filteredData.fact.length > 0;
+  var hasMarc = filteredData.marc.length > 0;
+  var hasFact = filteredData.fact.length > 0;
   var nav = [
     {id:"upload",label:"Cargar Datos",r:["admin","supervisor","gerencia"]},
     {id:"dashboard",label:"Dashboard",r:["admin","supervisor","gerencia"]},
@@ -3263,27 +3280,27 @@ function App() {
       );
     } else if (view === "dashboard") {
       content = has
-        ? <DashView marc={data.marc} fact={data.fact} />
+        ? <DashView marc={filteredData.marc} fact={filteredData.fact} />
         : <div style={{textAlign:"center",padding:40}}><p style={{color:C.w,fontSize:14}}>Sin datos cargados</p><button onClick={function(){setView("upload");}} style={{padding:"8px 16px",borderRadius:7,background:C.p,border:"none",color:"#fff",cursor:"pointer",marginTop:8,fontSize:12}}>Cargar Archivos</button></div>;
     } else if (view === "policies") {
       content = hasMarc
-        ? <PolView marc={data.marc} />
+        ? <PolView marc={filteredData.marc} />
         : <div style={{textAlign:"center",padding:40}}><p style={{color:C.w}}>Politicas necesita datos de marcaciones</p><button onClick={function(){setView("upload");}} style={{padding:"8px 16px",borderRadius:7,background:C.p,border:"none",color:"#fff",cursor:"pointer",fontSize:12}}>Cargar</button></div>;
     } else if (view === "auditoria") {
       content = hasMarc
-        ? <AuditoriaView marc={data.marc} />
+        ? <AuditoriaView marc={filteredData.marc} />
         : <div style={{textAlign:"center",padding:40}}><p style={{color:C.w}}>Auditoria necesita datos de marcaciones</p><button onClick={function(){setView("upload");}} style={{padding:"8px 16px",borderRadius:7,background:C.p,border:"none",color:"#fff",cursor:"pointer",fontSize:12}}>Cargar</button></div>;
     } else if (view === "eficiencia") {
       content = (has)
-        ? <EficienciaView marc={data.marc} fact={data.fact} />
+        ? <EficienciaView marc={filteredData.marc} fact={filteredData.fact} />
         : <div style={{textAlign:"center",padding:40}}><p style={{color:C.w}}>Necesitas cargar marcaciones y facturas</p><button onClick={function(){setView("upload");}} style={{padding:"8px 16px",borderRadius:7,background:C.p,border:"none",color:"#fff",cursor:"pointer",fontSize:12}}>Cargar</button></div>;
     } else if (view === "riesgo") {
       content = hasMarc
-        ? <RiesgoView marc={data.marc} />
+        ? <RiesgoView marc={filteredData.marc} />
         : <div style={{textAlign:"center",padding:40}}><p style={{color:C.w}}>Necesitas cargar marcaciones</p><button onClick={function(){setView("upload");}} style={{padding:"8px 16px",borderRadius:7,background:C.p,border:"none",color:"#fff",cursor:"pointer",fontSize:12}}>Cargar</button></div>;
     } else if (view === "tendencia") {
       content = hasMarc
-        ? <TendenciaView marc={data.marc} />
+        ? <TendenciaView marc={filteredData.marc} />
         : <div style={{textAlign:"center",padding:40}}><p style={{color:C.w}}>Necesitas cargar marcaciones</p><button onClick={function(){setView("upload");}} style={{padding:"8px 16px",borderRadius:7,background:C.p,border:"none",color:"#fff",cursor:"pointer",fontSize:12}}>Cargar</button></div>;
     } else if (view === "rules") {
       content = <RulesView />;
@@ -3401,8 +3418,17 @@ function App() {
               background:"rgba(31,107,46,0.07)",border:"1px solid "+C.bd}}>
               <span style={{width:6,height:6,borderRadius:"50%",background:"#4ade80",flexShrink:0,
                 boxShadow:"0 0 6px rgba(74,222,128,0.6)"}} />
-              <span style={{fontSize:11,color:C.tm,fontWeight:500}}>{data.marc.length.toLocaleString()} registros</span>
+              <span style={{fontSize:11,color:C.tm,fontWeight:500}}>{filteredData.marc.length.toLocaleString()} registros</span>
             </div>}
+            {(data.marc.length > 0 || data.fact.length > 0) && <button onClick={function(){setMasterFilterOpen(true);}}
+              style={{padding:"7px 12px",borderRadius:8,fontSize:11,fontWeight:600,
+                background:masterFilter.sedes||masterFilter.meses||masterFilter.clases||masterFilter.secciones?"rgba(31,107,46,0.12)":"transparent",
+                border:"1px solid "+(masterFilter.sedes||masterFilter.meses||masterFilter.clases||masterFilter.secciones?C.p:C.bd),
+                color:masterFilter.sedes||masterFilter.meses||masterFilter.clases||masterFilter.secciones?C.p:C.tm,
+                cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+              <span style={{fontSize:12}}>⚙</span> Filtro Maestro
+              {(masterFilter.sedes||masterFilter.meses||masterFilter.clases||masterFilter.secciones) && <span style={{width:6,height:6,borderRadius:"50%",background:C.p}} />}
+            </button>}
             {has && <div style={{position:"relative"}}>
               <button onClick={function(){setExpM(!expM);}}
                 style={{padding:"7px 14px",borderRadius:8,fontSize:12,fontWeight:600,
@@ -3455,6 +3481,121 @@ function App() {
           </div>
         </div>
       </div>
+
+      {masterFilterOpen && (function() {
+        var allSedes = {}, allMeses = {}, allClases = {}, allSecciones = {};
+        data.marc.forEach(function(m) {
+          if (m.DEPENDENCIA) allSedes[m.DEPENDENCIA] = 1;
+          if (m.MES) allMeses[m.MES] = 1;
+          if (m.CENTROCOSTO) allSecciones[m.CENTROCOSTO] = 1;
+        });
+        data.fact.forEach(function(f) {
+          if (f.sede) allSedes[f.sede] = 1;
+          if (f.mes) allMeses[f.mes] = 1;
+          if (f.clase) allClases[f.clase] = 1;
+        });
+        var ORD_MES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+        var sedesList = Object.keys(allSedes).sort();
+        var mesesList = Object.keys(allMeses).sort(function(a,b){ return ORD_MES.indexOf(a) - ORD_MES.indexOf(b); });
+        var clasesList = Object.keys(allClases).sort();
+        var seccionesList = Object.keys(allSecciones).sort();
+
+        var curSedes = masterFilter.sedes || {};
+        var curMeses = masterFilter.meses || {};
+        var curClases = masterFilter.clases || {};
+        var curSecciones = masterFilter.secciones || {};
+        var allSedesOn = !masterFilter.sedes;
+        var allMesesOn = !masterFilter.meses;
+        var allClasesOn = !masterFilter.clases;
+        var allSeccionesOn = !masterFilter.secciones;
+
+        function toggleItem(category, key) {
+          setMasterFilter(function(prev) {
+            var cur = prev[category];
+            if (!cur) {
+              var obj = {};
+              var list = category==="sedes"?sedesList:category==="meses"?mesesList:category==="clases"?clasesList:seccionesList;
+              list.forEach(function(k){ obj[k] = true; });
+              obj[key] = false;
+              var anyOn = Object.values(obj).some(function(v){ return v; });
+              return Object.assign({}, prev, (function(){ var o={}; o[category]=anyOn?obj:null; return o; })());
+            }
+            var next = Object.assign({}, cur);
+            next[key] = !next[key];
+            var anyOn = Object.values(next).some(function(v){ return v; });
+            var allOn = Object.values(next).every(function(v){ return v; });
+            var o = {}; o[category] = allOn ? null : (anyOn ? next : null);
+            return Object.assign({}, prev, o);
+          });
+        }
+
+        function toggleAll(category) {
+          setMasterFilter(function(prev) {
+            var o = {}; o[category] = prev[category] ? null : prev[category];
+            return Object.assign({}, prev, o);
+          });
+        }
+
+        function countActive(category) {
+          var cur = masterFilter[category];
+          if (!cur) return "Todas";
+          var n = Object.values(cur).filter(function(v){ return v; }).length;
+          var total = category==="sedes"?sedesList.length:category==="meses"?mesesList.length:category==="clases"?clasesList.length:seccionesList.length;
+          return n + " de " + total;
+        }
+
+        function renderSection(title, category, list, isAllOn, curMap) {
+          if (list.length === 0) return null;
+          return React.createElement("div", {key:category, style:{marginBottom:16}},
+            React.createElement("div", {style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}},
+              React.createElement("span", {style:{fontSize:12,fontWeight:700,color:C.t,textTransform:"uppercase",letterSpacing:"0.5px"}}, title),
+              React.createElement("div", {style:{display:"flex",gap:6,alignItems:"center"}},
+                React.createElement("span", {style:{fontSize:10,color:C.td}}, countActive(category)),
+                React.createElement("button", {onClick:function(){setMasterFilter(function(prev){var o={};o[category]=null;return Object.assign({},prev,o);});},
+                  style:{padding:"3px 8px",borderRadius:5,fontSize:9,border:"1px solid "+C.bd,background:isAllOn?C.pg:"transparent",color:isAllOn?C.p:C.tm,cursor:"pointer",fontWeight:600}}, "Todas")
+              )
+            ),
+            React.createElement("div", {style:{display:"flex",flexWrap:"wrap",gap:6}},
+              list.map(function(item) {
+                var on = isAllOn || (curMap[item] === true);
+                return React.createElement("button", {key:item, onClick:function(){toggleItem(category, item);},
+                  style:{padding:"6px 12px",borderRadius:8,fontSize:11,fontWeight:on?600:400,
+                    background:on?C.pg:"transparent",border:"1px solid "+(on?C.p:C.bd),
+                    color:on?C.p:C.td,cursor:"pointer",transition:"all 0.15s"}}, item);
+              })
+            )
+          );
+        }
+
+        return React.createElement("div", {style:{position:"fixed",inset:0,zIndex:9998,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center"},onClick:function(){setMasterFilterOpen(false);}},
+          React.createElement("div", {style:{background:C.sf,borderRadius:20,width:680,maxWidth:"95vw",maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 24px 60px rgba(0,0,0,0.3)",border:"1px solid "+C.bd,overflow:"hidden"},onClick:function(e){e.stopPropagation();}},
+            React.createElement("div", {style:{background:"linear-gradient(135deg,#0f1f13,#1f6b2e)",padding:"18px 24px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}},
+              React.createElement("div", null,
+                React.createElement("div", {style:{color:"#e8f5eb",fontSize:16,fontWeight:800}}, "Filtro Maestro"),
+                React.createElement("div", {style:{color:"#7aab85",fontSize:11,marginTop:3}}, "Selecciona qué datos quieres analizar en toda la app")
+              ),
+              React.createElement("button", {onClick:function(){setMasterFilterOpen(false);},style:{width:32,height:32,borderRadius:8,background:"rgba(255,255,255,0.1)",border:"none",color:"#e8f5eb",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}, "✕")
+            ),
+            React.createElement("div", {style:{flex:1,overflowY:"auto",padding:"20px 24px"}},
+              renderSection("Sedes", "sedes", sedesList, allSedesOn, curSedes),
+              renderSection("Meses", "meses", mesesList, allMesesOn, curMeses),
+              renderSection("Clases", "clases", clasesList, allClasesOn, curClases),
+              renderSection("Secciones", "secciones", seccionesList, allSeccionesOn, curSecciones)
+            ),
+            React.createElement("div", {style:{padding:"14px 24px",borderTop:"1px solid "+C.bd,display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}},
+              React.createElement("button", {onClick:function(){setMasterFilter({sedes:null,meses:null,clases:null,secciones:null});},
+                style:{padding:"8px 16px",borderRadius:8,fontSize:11,border:"1px solid "+C.bd,background:"transparent",color:C.tm,cursor:"pointer"}}, "Limpiar todo (ver todo)"),
+              React.createElement("div", {style:{display:"flex",gap:8}},
+                React.createElement("span", {style:{fontSize:11,color:C.td,alignSelf:"center"}},
+                  filteredData.marc.length.toLocaleString() + " marc · " + filteredData.fact.length.toLocaleString() + " fact"
+                ),
+                React.createElement("button", {onClick:function(){setMasterFilterOpen(false);},
+                  style:{padding:"8px 20px",borderRadius:8,fontSize:12,fontWeight:700,background:"linear-gradient(135deg,#1f6b2e,#3a9a50)",border:"none",color:"#fff",cursor:"pointer",boxShadow:"0 2px 8px rgba(31,107,46,0.3)"}}, "Aplicar y cerrar")
+              )
+            )
+          )
+        );
+      })()}
 
       {confirmReset && (
         <div style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={function(){setConfirmReset(false);}}>
