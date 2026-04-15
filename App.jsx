@@ -2913,6 +2913,110 @@ function AuditoriaView({ marc: marcaciones = [] }) {
 }
 
 /* === MAIN APP === */
+function MasterFilterModal({ data, masterFilter, setMasterFilter, filteredData, onClose }) {
+  var allSedes = {}, allMeses = {}, allClases = {}, allSecciones = {};
+  data.marc.forEach(function(m) {
+    if (m.DEPENDENCIA) allSedes[m.DEPENDENCIA] = 1;
+    if (m.MES) allMeses[m.MES] = 1;
+    if (m.CENTROCOSTO) allSecciones[m.CENTROCOSTO] = 1;
+  });
+  data.fact.forEach(function(f) {
+    if (f.sede) allSedes[f.sede] = 1;
+    if (f.mes) allMeses[f.mes] = 1;
+    if (f.clase) allClases[f.clase] = 1;
+  });
+  var ORD_MES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+  var sedesList = Object.keys(allSedes).sort();
+  var mesesList = Object.keys(allMeses).sort(function(a,b){ return ORD_MES.indexOf(a) - ORD_MES.indexOf(b); });
+  var clasesList = Object.keys(allClases).sort();
+  var seccionesList = Object.keys(allSecciones).sort();
+  var lists = {sedes:sedesList,meses:mesesList,clases:clasesList,secciones:seccionesList};
+
+  function toggleItem(category, key) {
+    setMasterFilter(function(prev) {
+      var list = lists[category];
+      var cur = prev[category];
+      if (!cur) {
+        var obj = {};
+        list.forEach(function(k){ obj[k] = true; });
+        obj[key] = false;
+        var anyOn = Object.values(obj).some(function(v){ return v; });
+        var o = {}; o[category] = anyOn ? obj : null;
+        return Object.assign({}, prev, o);
+      }
+      var next = Object.assign({}, cur);
+      next[key] = !next[key];
+      var anyOn = Object.values(next).some(function(v){ return v; });
+      var allOn = Object.values(next).every(function(v){ return v; });
+      var o = {}; o[category] = allOn ? null : (anyOn ? next : null);
+      return Object.assign({}, prev, o);
+    });
+  }
+
+  function countActive(category) {
+    var cur = masterFilter[category];
+    if (!cur) return "Todas";
+    var n = Object.values(cur).filter(function(v){ return v; }).length;
+    return n + " de " + lists[category].length;
+  }
+
+  function renderSection(title, category, list) {
+    if (list.length === 0) return null;
+    var isAllOn = !masterFilter[category];
+    var curMap = masterFilter[category] || {};
+    return (
+      <div key={category} style={{marginBottom:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+          <span style={{fontSize:12,fontWeight:700,color:C.t,textTransform:"uppercase",letterSpacing:"0.5px"}}>{title}</span>
+          <div style={{display:"flex",gap:6,alignItems:"center"}}>
+            <span style={{fontSize:10,color:C.td}}>{countActive(category)}</span>
+            <button onClick={function(){setMasterFilter(function(prev){var o={};o[category]=null;return Object.assign({},prev,o);});}}
+              style={{padding:"3px 8px",borderRadius:5,fontSize:9,border:"1px solid "+C.bd,background:isAllOn?C.pg:"transparent",color:isAllOn?C.p:C.tm,cursor:"pointer",fontWeight:600}}>Todas</button>
+          </div>
+        </div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+          {list.map(function(item) {
+            var on = isAllOn || (curMap[item] === true);
+            return <button key={item} onClick={function(){toggleItem(category, item);}}
+              style={{padding:"6px 12px",borderRadius:8,fontSize:11,fontWeight:on?600:400,
+                background:on?C.pg:"transparent",border:"1px solid "+(on?C.p:C.bd),
+                color:on?C.p:C.td,cursor:"pointer",transition:"all 0.15s"}}>{item}</button>;
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:9998,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
+      <div style={{background:C.sf,borderRadius:20,width:680,maxWidth:"95vw",maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 24px 60px rgba(0,0,0,0.3)",border:"1px solid "+C.bd,overflow:"hidden"}} onClick={function(e){e.stopPropagation();}}>
+        <div style={{background:"linear-gradient(135deg,#0f1f13,#1f6b2e)",padding:"18px 24px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+          <div>
+            <div style={{color:"#e8f5eb",fontSize:16,fontWeight:800}}>Filtro Maestro</div>
+            <div style={{color:"#7aab85",fontSize:11,marginTop:3}}>Selecciona qué datos quieres analizar en toda la app</div>
+          </div>
+          <button onClick={onClose} style={{width:32,height:32,borderRadius:8,background:"rgba(255,255,255,0.1)",border:"none",color:"#e8f5eb",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+        </div>
+        <div style={{flex:1,overflowY:"auto",padding:"20px 24px"}}>
+          {renderSection("Sedes", "sedes", sedesList)}
+          {renderSection("Meses", "meses", mesesList)}
+          {renderSection("Clases", "clases", clasesList)}
+          {renderSection("Secciones", "secciones", seccionesList)}
+        </div>
+        <div style={{padding:"14px 24px",borderTop:"1px solid "+C.bd,display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+          <button onClick={function(){setMasterFilter({sedes:null,meses:null,clases:null,secciones:null});}}
+            style={{padding:"8px 16px",borderRadius:8,fontSize:11,border:"1px solid "+C.bd,background:"transparent",color:C.tm,cursor:"pointer"}}>Limpiar todo (ver todo)</button>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <span style={{fontSize:11,color:C.td}}>{filteredData.marc.length.toLocaleString()} marc · {filteredData.fact.length.toLocaleString()} fact</span>
+            <button onClick={onClose}
+              style={{padding:"8px 20px",borderRadius:8,fontSize:12,fontWeight:700,background:"linear-gradient(135deg,#1f6b2e,#3a9a50)",border:"none",color:"#fff",cursor:"pointer",boxShadow:"0 2px 8px rgba(31,107,46,0.3)"}}>Aplicar y cerrar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   var _u = useState(null), user = _u[0], setUser = _u[1];
   var _v = useState("upload"), view = _v[0], setView = _v[1];
@@ -3482,120 +3586,9 @@ function App() {
         </div>
       </div>
 
-      {masterFilterOpen && (function() {
-        var allSedes = {}, allMeses = {}, allClases = {}, allSecciones = {};
-        data.marc.forEach(function(m) {
-          if (m.DEPENDENCIA) allSedes[m.DEPENDENCIA] = 1;
-          if (m.MES) allMeses[m.MES] = 1;
-          if (m.CENTROCOSTO) allSecciones[m.CENTROCOSTO] = 1;
-        });
-        data.fact.forEach(function(f) {
-          if (f.sede) allSedes[f.sede] = 1;
-          if (f.mes) allMeses[f.mes] = 1;
-          if (f.clase) allClases[f.clase] = 1;
-        });
-        var ORD_MES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
-        var sedesList = Object.keys(allSedes).sort();
-        var mesesList = Object.keys(allMeses).sort(function(a,b){ return ORD_MES.indexOf(a) - ORD_MES.indexOf(b); });
-        var clasesList = Object.keys(allClases).sort();
-        var seccionesList = Object.keys(allSecciones).sort();
 
-        var curSedes = masterFilter.sedes || {};
-        var curMeses = masterFilter.meses || {};
-        var curClases = masterFilter.clases || {};
-        var curSecciones = masterFilter.secciones || {};
-        var allSedesOn = !masterFilter.sedes;
-        var allMesesOn = !masterFilter.meses;
-        var allClasesOn = !masterFilter.clases;
-        var allSeccionesOn = !masterFilter.secciones;
+      {masterFilterOpen && <MasterFilterModal data={data} masterFilter={masterFilter} setMasterFilter={setMasterFilter} filteredData={filteredData} onClose={function(){setMasterFilterOpen(false);}} />}
 
-        function toggleItem(category, key) {
-          setMasterFilter(function(prev) {
-            var cur = prev[category];
-            if (!cur) {
-              var obj = {};
-              var list = category==="sedes"?sedesList:category==="meses"?mesesList:category==="clases"?clasesList:seccionesList;
-              list.forEach(function(k){ obj[k] = true; });
-              obj[key] = false;
-              var anyOn = Object.values(obj).some(function(v){ return v; });
-              return Object.assign({}, prev, (function(){ var o={}; o[category]=anyOn?obj:null; return o; })());
-            }
-            var next = Object.assign({}, cur);
-            next[key] = !next[key];
-            var anyOn = Object.values(next).some(function(v){ return v; });
-            var allOn = Object.values(next).every(function(v){ return v; });
-            var o = {}; o[category] = allOn ? null : (anyOn ? next : null);
-            return Object.assign({}, prev, o);
-          });
-        }
-
-        function toggleAll(category) {
-          setMasterFilter(function(prev) {
-            var o = {}; o[category] = prev[category] ? null : prev[category];
-            return Object.assign({}, prev, o);
-          });
-        }
-
-        function countActive(category) {
-          var cur = masterFilter[category];
-          if (!cur) return "Todas";
-          var n = Object.values(cur).filter(function(v){ return v; }).length;
-          var total = category==="sedes"?sedesList.length:category==="meses"?mesesList.length:category==="clases"?clasesList.length:seccionesList.length;
-          return n + " de " + total;
-        }
-
-        function renderSection(title, category, list, isAllOn, curMap) {
-          if (list.length === 0) return null;
-          return React.createElement("div", {key:category, style:{marginBottom:16}},
-            React.createElement("div", {style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}},
-              React.createElement("span", {style:{fontSize:12,fontWeight:700,color:C.t,textTransform:"uppercase",letterSpacing:"0.5px"}}, title),
-              React.createElement("div", {style:{display:"flex",gap:6,alignItems:"center"}},
-                React.createElement("span", {style:{fontSize:10,color:C.td}}, countActive(category)),
-                React.createElement("button", {onClick:function(){setMasterFilter(function(prev){var o={};o[category]=null;return Object.assign({},prev,o);});},
-                  style:{padding:"3px 8px",borderRadius:5,fontSize:9,border:"1px solid "+C.bd,background:isAllOn?C.pg:"transparent",color:isAllOn?C.p:C.tm,cursor:"pointer",fontWeight:600}}, "Todas")
-              )
-            ),
-            React.createElement("div", {style:{display:"flex",flexWrap:"wrap",gap:6}},
-              list.map(function(item) {
-                var on = isAllOn || (curMap[item] === true);
-                return React.createElement("button", {key:item, onClick:function(){toggleItem(category, item);},
-                  style:{padding:"6px 12px",borderRadius:8,fontSize:11,fontWeight:on?600:400,
-                    background:on?C.pg:"transparent",border:"1px solid "+(on?C.p:C.bd),
-                    color:on?C.p:C.td,cursor:"pointer",transition:"all 0.15s"}}, item);
-              })
-            )
-          );
-        }
-
-        return React.createElement("div", {style:{position:"fixed",inset:0,zIndex:9998,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center"},onClick:function(){setMasterFilterOpen(false);}},
-          React.createElement("div", {style:{background:C.sf,borderRadius:20,width:680,maxWidth:"95vw",maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 24px 60px rgba(0,0,0,0.3)",border:"1px solid "+C.bd,overflow:"hidden"},onClick:function(e){e.stopPropagation();}},
-            React.createElement("div", {style:{background:"linear-gradient(135deg,#0f1f13,#1f6b2e)",padding:"18px 24px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}},
-              React.createElement("div", null,
-                React.createElement("div", {style:{color:"#e8f5eb",fontSize:16,fontWeight:800}}, "Filtro Maestro"),
-                React.createElement("div", {style:{color:"#7aab85",fontSize:11,marginTop:3}}, "Selecciona qué datos quieres analizar en toda la app")
-              ),
-              React.createElement("button", {onClick:function(){setMasterFilterOpen(false);},style:{width:32,height:32,borderRadius:8,background:"rgba(255,255,255,0.1)",border:"none",color:"#e8f5eb",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}, "✕")
-            ),
-            React.createElement("div", {style:{flex:1,overflowY:"auto",padding:"20px 24px"}},
-              renderSection("Sedes", "sedes", sedesList, allSedesOn, curSedes),
-              renderSection("Meses", "meses", mesesList, allMesesOn, curMeses),
-              renderSection("Clases", "clases", clasesList, allClasesOn, curClases),
-              renderSection("Secciones", "secciones", seccionesList, allSeccionesOn, curSecciones)
-            ),
-            React.createElement("div", {style:{padding:"14px 24px",borderTop:"1px solid "+C.bd,display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}},
-              React.createElement("button", {onClick:function(){setMasterFilter({sedes:null,meses:null,clases:null,secciones:null});},
-                style:{padding:"8px 16px",borderRadius:8,fontSize:11,border:"1px solid "+C.bd,background:"transparent",color:C.tm,cursor:"pointer"}}, "Limpiar todo (ver todo)"),
-              React.createElement("div", {style:{display:"flex",gap:8}},
-                React.createElement("span", {style:{fontSize:11,color:C.td,alignSelf:"center"}},
-                  filteredData.marc.length.toLocaleString() + " marc · " + filteredData.fact.length.toLocaleString() + " fact"
-                ),
-                React.createElement("button", {onClick:function(){setMasterFilterOpen(false);},
-                  style:{padding:"8px 20px",borderRadius:8,fontSize:12,fontWeight:700,background:"linear-gradient(135deg,#1f6b2e,#3a9a50)",border:"none",color:"#fff",cursor:"pointer",boxShadow:"0 2px 8px rgba(31,107,46,0.3)"}}, "Aplicar y cerrar")
-              )
-            )
-          )
-        );
-      })()}
 
       {confirmReset && (
         <div style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={function(){setConfirmReset(false);}}>
