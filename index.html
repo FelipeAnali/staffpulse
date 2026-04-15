@@ -96,7 +96,7 @@ function normSede(raw) {
   s = s.replace(/^SC\s+/, "");        // SC VILLANUEVA    → VILLANUEVA
   s = s.replace(/^SC(?=[A-Z\u00C0-\u00FF])/, ""); // SCVILLAGORGONA → VILLAGORGONA
   s = s.trim();
-  if (!s) return "";
+  if (!s || s === "SC") return "";
   // Ahora siempre agregar "SC " al inicio
   return "SC " + s;                   // → SC VILLANUEVA, SC ZARZAL, SC PASOANCHO
 }
