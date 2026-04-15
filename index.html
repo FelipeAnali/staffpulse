@@ -1275,15 +1275,17 @@ function InformeView({ politicas, totalEmpleados, sede, mes, parametros, marcaci
 </body>
 </html>`;
 
-    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `SeguimientoApp_Reporte_${mesNombre}_${sede !== "Todas" ? sede + "_" : ""}${new Date().toISOString().slice(0,10)}.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    try {
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `SeguimientoApp_Reporte_${mesNombre}_${sede !== "Todas" ? sede + "_" : ""}${new Date().toISOString().slice(0,10)}.html`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch(e) { alert("Error al descargar informe: " + e.message); }
   };
 
   const S = {
@@ -1679,15 +1681,17 @@ function PolView({ marc: marcaciones = [], parametros, setParametros }) {
       }).join("")}
     </body></html>`;
 
-    const blob = new Blob([htmlResumen], { type: "application/vnd.ms-excel;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "Politicas_" + (sedeSel !== "Todas" ? sedeSel + "_" : "") + (mesSel !== "Todos" ? mesSel + "_" : "") + fecha + ".xls";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    try {
+      const blob = new Blob([htmlResumen], { type: "application/vnd.ms-excel;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "Politicas_" + (sedeSel !== "Todas" ? sedeSel + "_" : "") + (mesSel !== "Todos" ? mesSel + "_" : "") + fecha + ".xls";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch(e) { alert("Error al exportar Excel: " + e.message); }
   };
 
   return (
@@ -3269,15 +3273,17 @@ function App() {
   };
 
   var descargarArchivo = function(contenido, nombreArchivo, tipo) {
-    var blob = new Blob([contenido], {type: tipo});
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement("a");
-    a.href = url;
-    a.download = nombreArchivo;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    try {
+      var blob = new Blob([contenido], {type: tipo});
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = nombreArchivo;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch(e) { alert("Error al descargar: " + e.message); }
   };
 
   var expMem = function() {
