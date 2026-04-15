@@ -1412,8 +1412,7 @@ function InformeView({ politicas, totalEmpleados, sede, mes, parametros, marcaci
   );
 }
 
-function PolView({ marc: marcaciones = [] }) {
-  const [parametros, setParametros] = useState({ ...PARAMS_DEFAULT });
+function PolView({ marc: marcaciones = [], parametros, setParametros }) {
   const [mostrarConfig, setMostrarConfig] = useState(false);
   const [sedeSel, setSedeSel] = useState("Todas");
   const [mesSel, setMesSel] = useState("Todos");
@@ -2184,8 +2183,8 @@ function EficienciaView({ marc, fact }) {
 /* ============================================================
    RIESGO VIEW — Top empleados con más infracciones
    ============================================================ */
-function RiesgoView({ marc }) {
-  const params = PARAMS_DEFAULT;
+function RiesgoView({ marc, parametros }) {
+  const params = parametros;
   const [sedeSel, setSedeSel] = useState("Todas");
   const [mesSel,  setMesSel]  = useState("Todos");
   const [polFiltro, setPolFiltro] = useState("Todas");
@@ -2354,8 +2353,8 @@ function RiesgoView({ marc }) {
 /* ============================================================
    TENDENCIA VIEW — Evolución mes a mes
    ============================================================ */
-function TendenciaView({ marc }) {
-  const params = PARAMS_DEFAULT;
+function TendenciaView({ marc, parametros }) {
+  const params = parametros;
   const [sedeSel, setSedeSel] = useState("Todas");
   const [polSel,  setPolSel]  = useState("Todas");
 
@@ -3071,6 +3070,7 @@ function App() {
   var _cr = useState(false), confirmReset = _cr[0], setConfirmReset = _cr[1];
   var _mf = useState({sedes:null,meses:null,clases:null,secciones:null}), masterFilter = _mf[0], setMasterFilter = _mf[1];
   var _mfOpen = useState(false), masterFilterOpen = _mfOpen[0], setMasterFilterOpen = _mfOpen[1];
+  var _params = useState(Object.assign({}, PARAMS_DEFAULT)), parametrosGlobal = _params[0], setParametrosGlobal = _params[1];
   var fRef = useRef(null);
 
   /* Actualizar tema global en cada render */
@@ -3430,7 +3430,7 @@ function App() {
         : <div style={{textAlign:"center",padding:40}}><p style={{color:C.w,fontSize:14}}>Sin datos cargados</p><button onClick={function(){setView("upload");}} style={{padding:"8px 16px",borderRadius:7,background:C.p,border:"none",color:"#fff",cursor:"pointer",marginTop:8,fontSize:12}}>Cargar Archivos</button></div>;
     } else if (view === "policies") {
       content = hasMarc
-        ? <PolView marc={filteredData.marc} />
+        ? <PolView marc={filteredData.marc} parametros={parametrosGlobal} setParametros={setParametrosGlobal} />
         : <div style={{textAlign:"center",padding:40}}><p style={{color:C.w}}>Politicas necesita datos de marcaciones</p><button onClick={function(){setView("upload");}} style={{padding:"8px 16px",borderRadius:7,background:C.p,border:"none",color:"#fff",cursor:"pointer",fontSize:12}}>Cargar</button></div>;
     } else if (view === "auditoria") {
       content = hasMarc
@@ -3442,11 +3442,11 @@ function App() {
         : <div style={{textAlign:"center",padding:40}}><p style={{color:C.w}}>Necesitas cargar marcaciones y facturas</p><button onClick={function(){setView("upload");}} style={{padding:"8px 16px",borderRadius:7,background:C.p,border:"none",color:"#fff",cursor:"pointer",fontSize:12}}>Cargar</button></div>;
     } else if (view === "riesgo") {
       content = hasMarc
-        ? <RiesgoView marc={filteredData.marc} />
+        ? <RiesgoView marc={filteredData.marc} parametros={parametrosGlobal} />
         : <div style={{textAlign:"center",padding:40}}><p style={{color:C.w}}>Necesitas cargar marcaciones</p><button onClick={function(){setView("upload");}} style={{padding:"8px 16px",borderRadius:7,background:C.p,border:"none",color:"#fff",cursor:"pointer",fontSize:12}}>Cargar</button></div>;
     } else if (view === "tendencia") {
       content = hasMarc
-        ? <TendenciaView marc={filteredData.marc} />
+        ? <TendenciaView marc={filteredData.marc} parametros={parametrosGlobal} />
         : <div style={{textAlign:"center",padding:40}}><p style={{color:C.w}}>Necesitas cargar marcaciones</p><button onClick={function(){setView("upload");}} style={{padding:"8px 16px",borderRadius:7,background:C.p,border:"none",color:"#fff",cursor:"pointer",fontSize:12}}>Cargar</button></div>;
     } else if (view === "rules") {
       content = <RulesView />;
