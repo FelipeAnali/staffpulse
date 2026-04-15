@@ -2249,7 +2249,7 @@ function RiesgoView({ marc }) {
           { label:"Empleados con infracciones", val:ranking.length, color:"#dc2626", icon:"⚠️" },
           { label:"Total de infracciones", val:ranking.reduce((s,e)=>s+e.total,0), color:C.dg, icon:"📋" },
           { label:"Máximo por empleado", val:ranking[0]?.total||0, color:C.ac, icon:"🔺" },
-          { label:"Política más incumplida", val:politicas.sort((a,b)=>b.totalViolaciones-a.totalViolaciones)[0]?.id||"-", color:C.p, icon:"📌" },
+          { label:"Política más incumplida", val:[...politicas].sort((a,b)=>b.totalViolaciones-a.totalViolaciones)[0]?.id||"-", color:C.p, icon:"📌" },
         ].map((k,i) => (
           <div key={i} style={{padding:"16px",borderRadius:12,background:C.sf,border:"1px solid "+C.bd,boxShadow:"0 1px 4px rgba(31,107,46,0.07)"}}>
             <div style={{fontSize:11,color:C.td,marginBottom:6,display:"flex",gap:6,alignItems:"center"}}><span>{k.icon}</span>{k.label}</div>

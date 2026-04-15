@@ -377,6 +377,7 @@ function buildChart(marc, fact, f) {
     if (f.sede  !== "Todas" && x.sede  !== f.sede)  return false;
     if (f.clase !== "Todas" && x.clase !== f.clase) return false;
     if (f.mes   !== "Todos" && x.mes   !== f.mes)   return false;
+    if (f.dia   !== "Todos" && String(x.dia) !== f.dia) return false;
     return true;
   });
 
@@ -819,6 +820,7 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
       if (f.sede) sedesFacturas[f.sede] = 1;
       if (f.seccion) secciones[f.seccion] = 1;
       if (f.mes) meses[f.mes] = 1;
+      if (f.dia != null && f.dia > 0) dias[String(f.dia)] = 1;
     });
 
     Object.keys(sedesFacturas).forEach((k) => { sedes[k] = 1; });
@@ -922,7 +924,7 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
   if (opcionesFiltros.meses.length > 1) filtrosVisibles.push({ label: "Mes", key: "mes", opts: opcionesFiltros.meses });
   if (hasMarc) filtrosVisibles.push({ label: "DiaSem", key: "dsem", opts: opcionesFiltros.diasSemana });
   if (hasMarc && opcionesFiltros.semanas.length > 1) filtrosVisibles.push({ label: "Semana", key: "semana", opts: opcionesFiltros.semanas });
-  if (hasMarc && opcionesFiltros.dias.length > 1) filtrosVisibles.push({ label: "Dia", key: "dia", opts: opcionesFiltros.dias });
+  if (opcionesFiltros.dias.length > 1) filtrosVisibles.push({ label: "Dia", key: "dia", opts: opcionesFiltros.dias });
   if (hasMarc) filtrosVisibles.push({ label: "Quincena", key: "quincena", opts: ["Todos", "Quincena", "No Quincena"] });
 
   // -- Paginacion --
@@ -2230,7 +2232,7 @@ function RiesgoView({ marc }) {
           { label:"Empleados con infracciones", val:ranking.length, color:"#dc2626", icon:"⚠️" },
           { label:"Total de infracciones", val:ranking.reduce((s,e)=>s+e.total,0), color:C.dg, icon:"📋" },
           { label:"Máximo por empleado", val:ranking[0]?.total||0, color:C.ac, icon:"🔺" },
-          { label:"Política más incumplida", val:politicas.sort((a,b)=>b.totalViolaciones-a.totalViolaciones)[0]?.id||"-", color:C.p, icon:"📌" },
+          { label:"Política más incumplida", val:[...politicas].sort((a,b)=>b.totalViolaciones-a.totalViolaciones)[0]?.id||"-", color:C.p, icon:"📌" },
         ].map((k,i) => (
           <div key={i} style={{padding:"16px",borderRadius:12,background:C.sf,border:"1px solid "+C.bd,boxShadow:"0 1px 4px rgba(31,107,46,0.07)"}}>
             <div style={{fontSize:11,color:C.td,marginBottom:6,display:"flex",gap:6,alignItems:"center"}}><span>{k.icon}</span>{k.label}</div>
