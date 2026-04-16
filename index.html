@@ -298,7 +298,7 @@ function procBase(rows) {
       const dNum = Number(di);
       const mesIdx = dObj ? dObj.getMonth() : -1;
       if ([1,2,3,15,16,17,30,31].includes(dNum)) esQuincena = "Si";
-      if (mesIdx === 1 && dNum === 28) esQuincena = "Si";
+      if (mesIdx === 1 && (dNum === 28 || dNum === 29)) esQuincena = "Si";
     }
     
     // -- Detalle de breaks (para tabla y politicas) --
