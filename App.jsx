@@ -1356,7 +1356,7 @@ function getAnotacion(cumplimiento, nombre) {
 }
 
 /* INFORME VIEW (React puro, sin HTML strings) */
-function InformeView({ politicas, totalEmpleados, sede, mes, parametros, marcaciones, onCerrar }) {
+function InformeView({ politicas, totalEmpleados, sede, mes, parametros, marcaciones, userName, onCerrar }) {
   const mesesNombres = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
   const hoy = new Date();
   const fechaEmision = hoy.getDate() + " de " + mesesNombres[hoy.getMonth()].toLowerCase() + " del " + hoy.getFullYear();
@@ -1501,6 +1501,10 @@ function InformeView({ politicas, totalEmpleados, sede, mes, parametros, marcaci
       <p style="margin:8px 0;font-size:10.5pt">Fecha: <span class="firma-line"></span></p>
       <p style="margin:14px 0 0;font-size:10.5pt"><b>Proxima revision:</b> [DD/MM/AAAA]</p>
     </div>
+    <div style="margin-top:30px;padding:12px 18px;border-top:2px solid #1C5A2A;text-align:center">
+      <p style="font-size:8.5pt;color:#888;margin:0;letter-spacing:0.3px">DOCUMENTO CONFIDENCIAL — Generado por <b>${userName || "Usuario"}</b> el <b>${fechaEmision}</b> mediante Seguimiento App · Supertiendas Cañaveral S.A.</p>
+      <p style="font-size:7.5pt;color:#aaa;margin:4px 0 0">Prohibida su reproducción o distribución sin autorización. Este documento contiene información sensible de gestión de personal.</p>
+    </div>
   </div>
 </body>
 </html>`;
@@ -1639,12 +1643,17 @@ function InformeView({ politicas, totalEmpleados, sede, mes, parametros, marcaci
           <p style={{margin:"3px 0",fontSize:10.5}}>Fecha: <span style={S.firmaLine} /></p>
           <p style={{margin:"12px 0 0",fontSize:10.5}}><b>Proxima revision:</b> [DD/MM/AAAA]</p>
         </div>
+
+        <div style={{marginTop:30,padding:"12px 18px",borderTop:"2px solid #1C5A2A",textAlign:"center"}}>
+          <p style={{fontSize:8.5,color:"#888",margin:0,letterSpacing:"0.3px"}}>DOCUMENTO CONFIDENCIAL — Generado por <b>{userName || "Usuario"}</b> el <b>{fechaEmision}</b> mediante Seguimiento App · Supertiendas Cañaveral S.A.</p>
+          <p style={{fontSize:7.5,color:"#aaa",margin:"4px 0 0"}}>Prohibida su reproducción o distribución sin autorización.</p>
+        </div>
       </div>
     </div>
   );
 }
 
-function PolView({ marc: marcaciones = [], parametros, setParametros }) {
+function PolView({ marc: marcaciones = [], parametros, setParametros, userName }) {
   const [mostrarConfig, setMostrarConfig] = useState(false);
   const [sedeSel, setSedeSel] = useState("Todas");
   const [mesSel, setMesSel] = useState("Todos");
@@ -1909,6 +1918,9 @@ function PolView({ marc: marcaciones = [], parametros, setParametros }) {
             <th>Detalle del Incumplimiento</th><th style="width:60px">Valor</th>
           </tr></thead><tbody>${filasV}</tbody></table>`;
       }).join("")}
+      <div style="margin-top:24px;padding:10px 14px;border-top:2px solid #1f6b2e;text-align:center">
+        <p style="font-size:8pt;color:#888;margin:0">CONFIDENCIAL — Generado por ${userName || "Usuario"} el ${fecha} · Seguimiento App · Supertiendas Cañaveral S.A.</p>
+      </div>
     </body></html>`;
 
     try {
@@ -1927,7 +1939,7 @@ function PolView({ marc: marcaciones = [], parametros, setParametros }) {
   return (
     <div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      {mostrarInforme && <InformeView politicas={politicas} totalEmpleados={totalEmpleados} sede={sedeSel} mes={mesSel} parametros={parametros} marcaciones={marcacionesFiltradas} onCerrar={() => setMostrarInforme(false)} />}
+      {mostrarInforme && <InformeView politicas={politicas} totalEmpleados={totalEmpleados} sede={sedeSel} mes={mesSel} parametros={parametros} marcaciones={marcacionesFiltradas} userName={userName} onCerrar={() => setMostrarInforme(false)} />}
       {/* HEADER */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
         <div>
@@ -3224,7 +3236,7 @@ function AuditoriaView({ marc: marcaciones = [] }) {
 }
 
 /* === MAIN APP === */
-function ExportModal({ data, filteredData, masterFilter, limpiarMarc, descargarArchivo, onClose }) {
+function ExportModal({ data, filteredData, masterFilter, limpiarMarc, descargarArchivo, userName, onClose }) {
   var _mode = useState("consolidado"), mode = _mode[0], setMode = _mode[1];
   var _selSedes = useState(null), selSedes = _selSedes[0], setSelSedes = _selSedes[1];
   var _progress = useState(null), progress = _progress[0], setProgress = _progress[1];
@@ -3251,13 +3263,13 @@ function ExportModal({ data, filteredData, masterFilter, limpiarMarc, descargarA
 
   function generarMemoriaSede(marc, fact, sedeName) {
     var marcClean = limpiarMarc(marc);
-    return JSON.stringify({_type:"seguimiento_memory",_v:2,sede:sedeName,fecha:fecha,marcaciones:marcClean,facturas:fact}, null, 2);
+    return JSON.stringify({_type:"seguimiento_memory",_v:2,sede:sedeName,fecha:fecha,_generadoPor:userName||"Usuario",_confidencial:"Documento confidencial — Supertiendas Cañaveral S.A.",marcaciones:marcClean,facturas:fact}, null, 2);
   }
 
   function exportConsolidado() {
     var marcClean = limpiarMarc(filteredData.marc);
     var sedeName = masterFilter.sedes ? Object.keys(masterFilter.sedes).find(function(k){return masterFilter.sedes[k];}) || "" : "";
-    var jsonStr = JSON.stringify({_type:"seguimiento_memory",_v:2,marcaciones:marcClean,facturas:filteredData.fact}, null, 2);
+    var jsonStr = JSON.stringify({_type:"seguimiento_memory",_v:2,_generadoPor:userName||"Usuario",_confidencial:"Documento confidencial — Supertiendas Cañaveral S.A.",_fecha:fecha,marcaciones:marcClean,facturas:filteredData.fact}, null, 2);
     var nombre = "seguimiento_consolidado_" + (sedeName ? sedeName.replace(/\s+/g,"_") + "_" : "") + fecha + ".json";
     descargarArchivo(jsonStr, nombre, "application/json");
     onClose();
@@ -3986,7 +3998,7 @@ function App() {
         : <div style={{textAlign:"center",padding:40}}><p style={{color:C.w,fontSize:14}}>Sin datos cargados</p><button onClick={function(){setView("upload");}} style={{padding:"8px 16px",borderRadius:7,background:C.p,border:"none",color:"#fff",cursor:"pointer",marginTop:8,fontSize:12}}>Cargar Archivos</button></div>;
     } else if (view === "policies") {
       content = hasMarc
-        ? <PolView marc={filteredData.marc} parametros={parametrosGlobal} setParametros={setParametrosGlobal} />
+        ? <PolView marc={filteredData.marc} parametros={parametrosGlobal} setParametros={setParametrosGlobal} userName={user.name} />
         : <div style={{textAlign:"center",padding:40}}><p style={{color:C.w}}>Politicas necesita datos de marcaciones</p><button onClick={function(){setView("upload");}} style={{padding:"8px 16px",borderRadius:7,background:C.p,border:"none",color:"#fff",cursor:"pointer",fontSize:12}}>Cargar</button></div>;
     } else if (view === "auditoria") {
       content = hasMarc
@@ -4170,7 +4182,7 @@ function App() {
 
       {masterFilterOpen && <MasterFilterModal data={data} masterFilter={masterFilter} setMasterFilter={setMasterFilter} filteredData={filteredData} onClose={function(){setMasterFilterOpen(false);}} />}
 
-      {exportModalOpen && <ExportModal data={data} filteredData={filteredData} masterFilter={masterFilter} limpiarMarc={limpiarMarc} descargarArchivo={descargarArchivo} onClose={function(){setExportModalOpen(false);}} />}
+      {exportModalOpen && <ExportModal data={data} filteredData={filteredData} masterFilter={masterFilter} limpiarMarc={limpiarMarc} descargarArchivo={descargarArchivo} userName={user.name} onClose={function(){setExportModalOpen(false);}} />}
 
 
       {confirmReset && (
