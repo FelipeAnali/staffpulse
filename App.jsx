@@ -806,6 +806,231 @@ function Tip(props) {
 }
 
 /* === DASHBOARD VIEW === */
+/* === RESUMEN EJECUTIVO VIEW === */
+function ResumenView({ marc, fact, parametros }) {
+  const totalMarc = marc.length;
+  const totalFact = fact.length;
+
+  const stats = useMemo(() => {
+    if (totalMarc === 0 && totalFact === 0) return null;
+
+    // Sedes
+    const sedesMap = {};
+    marc.forEach(m => { if (m.DEPENDENCIA) sedesMap[m.DEPENDENCIA] = (sedesMap[m.DEPENDENCIA]||0)+1; });
+    const totalSedes = Object.keys(sedesMap).length;
+
+    // Empleados
+    const empMap = {};
+    marc.forEach(m => { if (m.IDENTIFICACION) empMap[m.IDENTIFICACION] = 1; });
+    const totalEmpleados = Object.keys(empMap).length;
+
+    // Fechas
+    const fechas = {};
+    marc.forEach(m => { if (m.FECHA) fechas[m.FECHA] = 1; });
+    const totalDias = Object.keys(fechas).length;
+
+    // Meses
+    const meses = {};
+    marc.forEach(m => { if (m.MES) meses[m.MES] = 1; });
+
+    // Promedio horas
+    const promHoras = totalMarc > 0 ? (marc.reduce((s,m) => s+(m.TOTAL_HORAS||0), 0) / totalMarc).toFixed(1) : "0";
+
+    // Venta total
+    const ventaTotal = fact.reduce((s,f) => s+(f.venta||0), 0);
+
+    // Políticas por sede
+    const sedesCriticas = [];
+    const sedesOk = [];
+    Object.keys(sedesMap).forEach(sede => {
+      const marcSede = marc.filter(m => m.DEPENDENCIA === sede);
+      const result = evaluarPoliticas(marcSede, parametros, "Todas");
+      const promCumpl = result.politicas.length > 0 ? Math.round(result.politicas.reduce((s,p) => s+p.cumplimiento, 0) / result.politicas.length) : 100;
+      const polsRojas = result.politicas.filter(p => p.cumplimiento < 70).length;
+      const obj = { sede:sede, cumplimiento:promCumpl, empleados:result.totalEmpleados, polsRojas:polsRojas, registros:sedesMap[sede] };
+      if (promCumpl < 70) sedesCriticas.push(obj);
+      else sedesOk.push(obj);
+    });
+    sedesCriticas.sort((a,b) => a.cumplimiento - b.cumplimiento);
+    sedesOk.sort((a,b) => a.cumplimiento - b.cumplimiento);
+
+    // Políticas globales
+    const globalResult = evaluarPoliticas(marc, parametros, "Todas");
+    const promGlobal = globalResult.politicas.length > 0 ? Math.round(globalResult.politicas.reduce((s,p) => s+p.cumplimiento, 0) / globalResult.politicas.length) : 100;
+    const polsEnRojo = globalResult.politicas.filter(p => p.cumplimiento < 70);
+    const polsEnAmarillo = globalResult.politicas.filter(p => p.cumplimiento >= 70 && p.cumplimiento < 90);
+
+    // Top empleados infractores
+    const empInfMap = {};
+    globalResult.politicas.forEach(pol => {
+      pol.violadores.forEach(v => {
+        if (!empInfMap[v.id]) empInfMap[v.id] = { id:v.id, nombre:v.nombre, cargo:v.cargo, sede:v.sede, total:0 };
+        empInfMap[v.id].total++;
+      });
+    });
+    const topInfractores = Object.values(empInfMap).sort((a,b) => b.total-a.total).slice(0,5);
+
+    return {
+      totalSedes, totalEmpleados, totalDias, totalMarc, totalFact, meses:Object.keys(meses),
+      promHoras, ventaTotal, promGlobal, sedesCriticas, sedesOk,
+      polsEnRojo, polsEnAmarillo, topInfractores,
+      politicas: globalResult.politicas,
+    };
+  }, [marc, fact, parametros]);
+
+  if (!stats) return (
+    <div style={{textAlign:"center",padding:60}}>
+      <div style={{fontSize:40,marginBottom:16}}>📊</div>
+      <p style={{color:C.tm,fontSize:14}}>Carga datos para ver el resumen ejecutivo</p>
+    </div>
+  );
+
+  const pctColor = (c) => c >= 90 ? C.p : c >= 70 ? C.ac : C.dg;
+  const pctBg = (c) => c >= 90 ? "rgba(31,107,46,0.08)" : c >= 70 ? "rgba(180,83,9,0.08)" : "rgba(220,38,38,0.08)";
+  const pctBorder = (c) => c >= 90 ? "rgba(31,107,46,0.2)" : c >= 70 ? "rgba(180,83,9,0.2)" : "rgba(220,38,38,0.2)";
+
+  return (
+    <div>
+      <div style={{marginBottom:20}}>
+        <h2 style={{color:C.w,fontSize:20,fontWeight:800,margin:"0 0 4px"}}>Resumen Ejecutivo</h2>
+        <p style={{color:C.td,fontSize:12,margin:0}}>{stats.meses.join(", ")} · {stats.totalSedes} sedes · {stats.totalEmpleados} empleados · {stats.totalDias} días</p>
+      </div>
+
+      <div style={{padding:20,borderRadius:16,marginBottom:16,background:pctBg(stats.promGlobal),border:"2px solid "+pctBorder(stats.promGlobal),display:"flex",alignItems:"center",gap:20,flexWrap:"wrap"}}>
+        <div style={{width:80,height:80,borderRadius:"50%",border:"4px solid "+pctColor(stats.promGlobal),display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+          <span style={{fontSize:28,fontWeight:900,color:pctColor(stats.promGlobal)}}>{stats.promGlobal}%</span>
+        </div>
+        <div style={{flex:1,minWidth:200}}>
+          <div style={{fontSize:16,fontWeight:800,color:C.t,marginBottom:4}}>Cumplimiento General</div>
+          <div style={{fontSize:12,color:C.tm,lineHeight:1.6}}>
+            {stats.sedesCriticas.length > 0 && <span style={{color:C.dg,fontWeight:700}}>{stats.sedesCriticas.length} sede{stats.sedesCriticas.length>1?"s":""} en estado crítico (&lt;70%). </span>}
+            {stats.polsEnRojo.length > 0 && <span style={{color:C.dg,fontWeight:600}}>{stats.polsEnRojo.length} política{stats.polsEnRojo.length>1?"s":""} en rojo. </span>}
+            {stats.polsEnAmarillo.length > 0 && <span style={{color:C.ac,fontWeight:600}}>{stats.polsEnAmarillo.length} en amarillo. </span>}
+            {stats.sedesCriticas.length === 0 && stats.polsEnRojo.length === 0 && <span style={{color:C.p,fontWeight:600}}>Todas las sedes con cumplimiento aceptable.</span>}
+          </div>
+        </div>
+        <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+          {[
+            {v:stats.totalEmpleados, l:"Empleados", c:C.p},
+            {v:stats.promHoras+"h", l:"Prom/día", c:C.s},
+            {v:stats.totalSedes, l:"Sedes", c:"#8b5cf6"},
+          ].map((s,i) => (
+            <div key={i} style={{textAlign:"center"}}>
+              <div style={{fontSize:22,fontWeight:800,color:s.c}}>{s.v}</div>
+              <div style={{fontSize:10,color:C.td,textTransform:"uppercase",letterSpacing:"0.3px"}}>{s.l}</div>
+            </div>
+          ))}
+          {stats.ventaTotal > 0 && <div style={{textAlign:"center"}}>
+            <div style={{fontSize:22,fontWeight:800,color:"#06b6d4"}}>{"$"+Math.round(stats.ventaTotal/1e6).toLocaleString()+"M"}</div>
+            <div style={{fontSize:10,color:C.td,textTransform:"uppercase",letterSpacing:"0.3px"}}>Venta</div>
+          </div>}
+        </div>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+
+        <div style={{borderRadius:14,border:"1px solid "+C.bd,overflow:"hidden",boxShadow:"0 1px 4px rgba(31,107,46,0.07)"}}>
+          <div style={{padding:"13px 18px",background:"linear-gradient(135deg,#5a0a0a,#991b1b)"}}>
+            <div style={{color:"#fecaca",fontWeight:700,fontSize:13}}>Sedes Críticas ({stats.sedesCriticas.length})</div>
+            <div style={{color:"#fca5a5",fontSize:10,marginTop:2}}>Cumplimiento &lt;70% — requieren atención inmediata</div>
+          </div>
+          <div style={{background:C.sf,maxHeight:220,overflowY:"auto"}}>
+            {stats.sedesCriticas.length === 0 ? (
+              <div style={{padding:20,textAlign:"center",color:C.p,fontSize:12,fontWeight:600}}>✅ Ninguna sede en estado crítico</div>
+            ) : stats.sedesCriticas.map((s,i) => (
+              <div key={s.sede} style={{padding:"12px 18px",borderBottom:"1px solid "+C.bd,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <div style={{fontSize:12,fontWeight:600,color:C.t}}>{s.sede}</div>
+                  <div style={{fontSize:10,color:C.td}}>{s.empleados} empleados · {s.polsRojas} pol. en rojo</div>
+                </div>
+                <span style={{fontSize:16,fontWeight:800,color:C.dg}}>{s.cumplimiento}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{borderRadius:14,border:"1px solid "+C.bd,overflow:"hidden",boxShadow:"0 1px 4px rgba(31,107,46,0.07)"}}>
+          <div style={{padding:"13px 18px",background:"linear-gradient(135deg,#5a2d0a,#92400e)"}}>
+            <div style={{color:"#fde68a",fontWeight:700,fontSize:13}}>Top Empleados con Infracciones</div>
+            <div style={{color:"#fcd34d",fontSize:10,marginTop:2}}>Mayor cantidad de violaciones acumuladas</div>
+          </div>
+          <div style={{background:C.sf,maxHeight:220,overflowY:"auto"}}>
+            {stats.topInfractores.length === 0 ? (
+              <div style={{padding:20,textAlign:"center",color:C.p,fontSize:12,fontWeight:600}}>✅ Sin infracciones registradas</div>
+            ) : stats.topInfractores.map((emp,i) => (
+              <div key={emp.id} style={{padding:"12px 18px",borderBottom:"1px solid "+C.bd,display:"flex",alignItems:"center",gap:12}}>
+                <span style={{width:26,height:26,borderRadius:7,background:i<3?"rgba(220,38,38,0.1)":C.sa,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:i<3?C.dg:C.td,flexShrink:0}}>{i+1}</span>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12,fontWeight:600,color:C.t,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{emp.nombre}</div>
+                  <div style={{fontSize:10,color:C.td}}>{emp.cargo} · {emp.sede}</div>
+                </div>
+                <span style={{fontSize:16,fontWeight:800,color:C.dg}}>{emp.total}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={{borderRadius:14,border:"1px solid "+C.bd,overflow:"hidden",boxShadow:"0 1px 4px rgba(31,107,46,0.07)",marginBottom:16}}>
+        <div style={{padding:"13px 18px",background:"linear-gradient(135deg,#0f1f13,#1f6b2e)"}}>
+          <div style={{color:"#e8f5eb",fontWeight:700,fontSize:13}}>9 Políticas — Estado General</div>
+        </div>
+        <div style={{background:C.sf,padding:16}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:10}}>
+            {stats.politicas.map(p => {
+              const pc = pctColor(p.cumplimiento);
+              return (
+                <div key={p.id} style={{padding:12,borderRadius:10,background:pctBg(p.cumplimiento),border:"1px solid "+pctBorder(p.cumplimiento)}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                    <span style={{fontSize:10,fontWeight:700,color:C.td}}>POL {p.num}</span>
+                    <span style={{fontSize:14,fontWeight:800,color:pc}}>{p.cumplimiento}%</span>
+                  </div>
+                  <div style={{fontSize:11,fontWeight:600,color:C.t,marginBottom:4,lineHeight:1.3}}>{p.nombre}</div>
+                  <div style={{height:4,borderRadius:2,background:"rgba(0,0,0,0.06)",overflow:"hidden"}}>
+                    <div style={{height:"100%",borderRadius:2,background:pc,width:p.cumplimiento+"%"}} />
+                  </div>
+                  <div style={{fontSize:10,color:C.td,marginTop:4}}>{p.empleadosAfectados} afectados · {p.totalViolaciones} eventos</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div style={{borderRadius:14,border:"1px solid "+C.bd,overflow:"hidden",boxShadow:"0 1px 4px rgba(31,107,46,0.07)"}}>
+        <div style={{padding:"13px 18px",background:"linear-gradient(135deg,#0f1f13,#1f6b2e)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{color:"#e8f5eb",fontWeight:700,fontSize:13}}>Ranking de Sedes por Cumplimiento</div>
+          <div style={{color:"#7aab85",fontSize:11}}>{stats.totalSedes} sedes</div>
+        </div>
+        <div style={{background:C.sf,maxHeight:400,overflowY:"auto"}}>
+          <div style={{display:"grid",gridTemplateColumns:"40px 1fr 80px 100px 120px",gap:0,padding:"10px 18px",borderBottom:"1px solid "+C.bd,background:C.sa}}>
+            {["#","Sede","Empleados","Pol. Rojas","Cumplimiento"].map((h,i) => (
+              <span key={i} style={{fontSize:10,fontWeight:700,color:C.td,textTransform:"uppercase",letterSpacing:"0.4px"}}>{h}</span>
+            ))}
+          </div>
+          {[...stats.sedesCriticas,...stats.sedesOk].sort((a,b)=>a.cumplimiento-b.cumplimiento).map((s,i) => {
+            const pc = pctColor(s.cumplimiento);
+            return (
+              <div key={s.sede} style={{display:"grid",gridTemplateColumns:"40px 1fr 80px 100px 120px",gap:0,padding:"12px 18px",borderBottom:"1px solid "+C.bd,alignItems:"center"}}>
+                <span style={{width:26,height:26,borderRadius:7,background:pctBg(s.cumplimiento),display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:pc}}>{i+1}</span>
+                <span style={{fontSize:12,fontWeight:600,color:C.t,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",paddingRight:8}}>{s.sede}</span>
+                <span style={{fontSize:12,color:C.tm}}>{s.empleados}</span>
+                <span style={{fontSize:12,fontWeight:s.polsRojas>0?700:400,color:s.polsRojas>0?C.dg:C.td}}>{s.polsRojas}</span>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <div style={{flex:1,height:6,borderRadius:3,background:"rgba(0,0,0,0.06)",overflow:"hidden"}}>
+                    <div style={{width:s.cumplimiento+"%",height:"100%",borderRadius:3,background:pc}} />
+                  </div>
+                  <span style={{fontSize:12,fontWeight:700,color:pc,minWidth:35}}>{s.cumplimiento}%</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
   const hasMarc = marcaciones.length > 0;
   const hasFact = facturas.length > 0;
@@ -3653,6 +3878,7 @@ function App() {
   var hasFact = filteredData.fact.length > 0;
   var nav = [
     {id:"upload",label:"Cargar Datos",r:["admin","supervisor","gerencia"]},
+    {id:"resumen",label:"Resumen",r:["admin","supervisor","gerencia"]},
     {id:"dashboard",label:"Dashboard",r:["admin","supervisor","gerencia"]},
     {id:"eficiencia",label:"Eficiencia",r:["admin","gerencia"]},
     {id:"riesgo",label:"Riesgo",r:["admin","gerencia"]},
@@ -3721,6 +3947,10 @@ function App() {
           })()}
         </div>
       );
+    } else if (view === "resumen") {
+      content = has
+        ? <ResumenView marc={filteredData.marc} fact={filteredData.fact} parametros={parametrosGlobal} />
+        : <div style={{textAlign:"center",padding:40}}><p style={{color:C.w,fontSize:14}}>Sin datos cargados</p><button onClick={function(){setView("upload");}} style={{padding:"8px 16px",borderRadius:7,background:C.p,border:"none",color:"#fff",cursor:"pointer",marginTop:8,fontSize:12}}>Cargar Archivos</button></div>;
     } else if (view === "dashboard") {
       content = has
         ? <DashView marc={filteredData.marc} fact={filteredData.fact} />
@@ -3753,7 +3983,7 @@ function App() {
   }
 
   /* Iconos para el nav */
-  var NAV_ICONS = {upload:"⬆",dashboard:"◼",eficiencia:"⚡",riesgo:"⚠",tendencia:"↗",policies:"📋",auditoria:"🔍",rules:"📖"};
+  var NAV_ICONS = {upload:"⬆",resumen:"📊",dashboard:"◼",eficiencia:"⚡",riesgo:"⚠",tendencia:"↗",policies:"📋",auditoria:"🔍",rules:"📖"};
 
   return (
     <div style={{display:"flex",height:"100vh",overflow:"hidden",background:C.bg,fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif",
