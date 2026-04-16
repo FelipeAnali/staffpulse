@@ -284,7 +284,9 @@ function procBase(rows) {
       sw.setDate(dObj.getDate() - dw + 1);
       const ew = new Date(sw);
       ew.setDate(sw.getDate() + 6);
-      sem = sw.getDate() + " AL " + ew.getDate() + " DE " + meses[sw.getMonth()].toUpperCase() + " " + sw.getFullYear();
+      sem = sw.getMonth() === ew.getMonth()
+        ? sw.getDate() + " AL " + ew.getDate() + " DE " + meses[sw.getMonth()].toUpperCase() + " " + sw.getFullYear()
+        : sw.getDate() + " DE " + meses[sw.getMonth()].toUpperCase() + " AL " + ew.getDate() + " DE " + meses[ew.getMonth()].toUpperCase() + " " + ew.getFullYear();
     }
     
     // -- Quincena retail --
