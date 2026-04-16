@@ -1,6 +1,6 @@
 const { useState, useMemo, useRef, useEffect } = React;
 const {
-  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ComposedChart, BarChart, Bar, Line, LineChart, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, ResponsiveContainer, RadarChart, Radar,
   PolarGrid, PolarAngleAxis, PolarRadiusAxis
 } = Recharts;
@@ -31,7 +31,12 @@ var C = {
   zebra:"rgba(31,107,46,0.03)",gridHi:"rgba(31,107,46,0.11)",btnTxt:"#fff"
 };
 
-var USERS={admin:{pw:"admin2026",role:"admin",name:"Administrador"},supervisor:{pw:"super2026",role:"supervisor",name:"Supervisor"},gerencia:{pw:"gerencia2026",role:"gerencia",name:"Gerencia"}};
+var USERS={admin:{pw:"6051fc84a7a0d74c225fb18a496b09952da5642e60723ecae543298edd7d82d6",role:"admin",name:"Administrador"},supervisor:{pw:"9a0ee89e00a006877eca0c28eebeb38aa301469b9cce8012b6ee04b13079a7e8",role:"supervisor",name:"Supervisor"},gerencia:{pw:"2f8f191656429c28ea6f334a5d8568aa0f62f64674b87dd26546368e09f7f756",role:"gerencia",name:"Gerencia"}};
+
+async function hashPw(pw) {
+  var buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pw));
+  return Array.from(new Uint8Array(buf)).map(function(b){ return b.toString(16).padStart(2,"0"); }).join("");
+}
 
 var HC=["0:00","4:00","5:00","6:00","7:00","8:00","9:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00","20:00","21:00","22:00","23:00"];
 var HL=["12am","4am","5am","6am","7am","8am","9am","10am","11am","12pm","1pm","2pm","3pm","4pm","5pm","6pm","7pm","8pm","9pm","10pm","11pm"];
@@ -79,6 +84,7 @@ function normSede(raw) {
   s = s.replace(/^SC\s+/, "");        // SC VILLANUEVA    → VILLANUEVA
   s = s.replace(/^SC(?=[A-Z\u00C0-\u00FF])/, ""); // SCVILLAGORGONA → VILLAGORGONA
   s = s.trim();
+  if (!s || s === "SC") return "";
   // Ahora siempre agregar "SC " al inicio
   return "SC " + s;                   // → SC VILLANUEVA, SC ZARZAL, SC PASOANCHO
 }
@@ -104,7 +110,12 @@ function procBase(rows) {
   const iCCosto = colMap["CENTROCOSTO"];
 
   if (iID == null || iFecha == null || iHora == null || iFuncion == null) {
-    console.error("Columnas faltantes:", headers);
+    var faltantes = [];
+    if (iID == null) faltantes.push("IDENTIFICACION");
+    if (iFecha == null) faltantes.push("FECHA");
+    if (iHora == null) faltantes.push("HORA");
+    if (iFuncion == null) faltantes.push("FUNCION");
+    alert("Error: faltan columnas en el archivo de marcaciones: " + faltantes.join(", ") + ". Columnas encontradas: " + headers.join(", "));
     return [];
   }
 
@@ -164,18 +175,23 @@ function procBase(rows) {
       const h = marc.hora;
       const fn = marc.funcion;
 
+      if (fn === "FALLIDA") continue;
       if (fn === "ENTRADA" && entrada === null) entrada = h;
       if (fn === "SALIDA") salida = h;
-      if (fn === "FALLIDA") continue;
 
       // SALIDA A BREAK / SALIDA A BREAK 1 / SALIDA A BREAK 2
       if (fn.startsWith("SALIDA A BREAK")) {
+        if (breakOutH !== null) {
+          breakPairs.push({ salidaH: breakOutH, llegadaH: null, duracionMin: 0, tipo: "BREAK_INCOMPLETO" });
+        }
         breakOutH = h;
       }
       
       // LLEGADA DE BREAK / LLEGADA DE BREAK 1 / LLEGADA DE BREAK 2
       if (fn.startsWith("LLEGADA DE BREAK") && breakOutH !== null) {
-        const duracionMin = Math.round((h - breakOutH) * 60);
+        const duracionMinRaw = Math.round((h - breakOutH) * 60);
+        if (duracionMinRaw <= 0) { breakOutH = null; continue; }
+        const duracionMin = duracionMinRaw;
         
         let tipo;
         if (duracionMin < UMBRAL_TURNO_PARTIDO) {
@@ -188,7 +204,7 @@ function procBase(rows) {
 
         breakPairs.push({
           salidaH: breakOutH, llegadaH: h,
-          duracionMin: Math.max(0, duracionMin), tipo,
+          duracionMin, tipo,
         });
         breakOutH = null;
       }
@@ -259,7 +275,9 @@ function procBase(rows) {
       sw.setDate(dObj.getDate() - dw + 1);
       const ew = new Date(sw);
       ew.setDate(sw.getDate() + 6);
-      sem = sw.getDate() + " AL " + ew.getDate() + " DE " + meses[sw.getMonth()].toUpperCase() + " " + sw.getFullYear();
+      sem = sw.getMonth() === ew.getMonth()
+        ? sw.getDate() + " AL " + ew.getDate() + " DE " + meses[sw.getMonth()].toUpperCase() + " " + sw.getFullYear()
+        : sw.getDate() + " DE " + meses[sw.getMonth()].toUpperCase() + " AL " + ew.getDate() + " DE " + meses[ew.getMonth()].toUpperCase() + " " + ew.getFullYear();
     }
     
     // -- Quincena retail --
@@ -268,7 +286,7 @@ function procBase(rows) {
       const dNum = Number(di);
       const mesIdx = dObj ? dObj.getMonth() : -1;
       if ([1,2,3,15,16,17,30,31].includes(dNum)) esQuincena = "Si";
-      if (mesIdx === 1 && dNum === 28) esQuincena = "Si";
+      if (mesIdx === 1 && (dNum === 28 || dNum === 29)) esQuincena = "Si";
     }
     
     // -- Detalle de breaks (para tabla y politicas) --
@@ -357,6 +375,9 @@ function procFact(rows) {
 /* === BUILD CHART DATA === */
 // Precalcular los índices numéricos de HC una sola vez
 var HC_NUM = HC.map(function(hc){ return parseInt(hc.split(":")[0]); });
+var HC_MAP = {};
+HC_NUM.forEach(function(h, i){ HC_MAP[h] = i; });
+var HC_MAP = {}; HC_NUM.forEach(function(h, i){ HC_MAP[h] = i; });
 
 function buildChart(marc, fact, f) {
   // -- Aplicar todos los filtros en UN SOLO recorrido sobre marcaciones --
@@ -396,8 +417,8 @@ function buildChart(marc, fact, f) {
   const ttByHora  = new Float64Array(HC.length);
   const dfByHora  = new Array(HC.length).fill(null).map(function(){ return {}; });
   ff.forEach(function(x) {
-    var idx = HC_NUM.indexOf(x.hora);
-    if (idx >= 0) {
+    var idx = HC_MAP[x.hora];
+    if (idx !== undefined) {
       ttByHora[idx] += x.nfact;
       dfByHora[idx][x.dia + x.mes] = true;
     }
@@ -829,7 +850,7 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
       sedes: ["Todas", ...Object.keys(sedes)],
       secciones: ["Todas", ...Object.keys(secciones)],
       clases: ["Todas", ...Object.keys(clases)],
-      meses: ["Todos", ...Object.keys(meses)],
+      meses: (function(){ var ORD=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"]; return ["Todos", ...Object.keys(meses).sort(function(a,b){ return ORD.indexOf(a.toLowerCase().trim()) - ORD.indexOf(b.toLowerCase().trim()); })]; })(),
       diasSemana: ["Todos", "Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado", "Domingo"],
       semanas: ["Todas", ...Object.keys(semanas)],
       dias: ["Todos", ...Object.keys(dias).sort((a, b) => (+a) - (+b))],
@@ -1254,15 +1275,17 @@ function InformeView({ politicas, totalEmpleados, sede, mes, parametros, marcaci
 </body>
 </html>`;
 
-    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `SeguimientoApp_Reporte_${mesNombre}_${sede !== "Todas" ? sede + "_" : ""}${new Date().toISOString().slice(0,10)}.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    try {
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `SeguimientoApp_Reporte_${mesNombre}_${sede !== "Todas" ? sede + "_" : ""}${new Date().toISOString().slice(0,10)}.html`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch(e) { alert("Error al descargar informe: " + e.message); }
   };
 
   const S = {
@@ -1391,8 +1414,7 @@ function InformeView({ politicas, totalEmpleados, sede, mes, parametros, marcaci
   );
 }
 
-function PolView({ marc: marcaciones = [] }) {
-  const [parametros, setParametros] = useState({ ...PARAMS_DEFAULT });
+function PolView({ marc: marcaciones = [], parametros, setParametros }) {
   const [mostrarConfig, setMostrarConfig] = useState(false);
   const [sedeSel, setSedeSel] = useState("Todas");
   const [mesSel, setMesSel] = useState("Todos");
@@ -1414,7 +1436,7 @@ function PolView({ marc: marcaciones = [] }) {
     const ORDEN = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
     const s = {};
     marcaciones.forEach((m) => { if (m.MES) s[m.MES] = 1; });
-    const lista = Object.keys(s).sort((a, b) => ORDEN.indexOf(a.toLowerCase()) - ORDEN.indexOf(b.toLowerCase()));
+    const lista = Object.keys(s).sort((a, b) => ORDEN.indexOf(a.toLowerCase().trim()) - ORDEN.indexOf(b.toLowerCase().trim()));
     return ["Todos", ...lista];
   }, [marcaciones]);
 
@@ -1465,6 +1487,7 @@ function PolView({ marc: marcaciones = [] }) {
     let idx = 0;
     function processChunk() {
       if (cancelled) return;
+      try {
       const end = Math.min(idx + CHUNK, empleados.length);
       for (let ei = idx; ei < end; ei++) {
         const emp = empleados[ei];
@@ -1515,12 +1538,13 @@ function PolView({ marc: marcaciones = [] }) {
         });
         if (!cancelled) { setResultado({ politicas, totalEmpleados }); setCalculando(false); }
       }
+      } catch(chunkErr) { console.error("Error en processChunk:", chunkErr); if (!cancelled) { setCalculando(false); setResultado({ politicas: POLITICAS_DEF.map(p => ({...p, desc: p.descFn(parametros), violadores:[], empleadosAfectados:0, totalViolaciones:0, porcentaje:0, cumplimiento:100})), totalEmpleados: 0, error: "Error calculando politicas: " + chunkErr.message }); } }
     }
-    setTimeout(processChunk, 50);
-    return () => { cancelled = true; };
+    var t = setTimeout(processChunk, 50);
+    return () => { cancelled = true; clearTimeout(t); };
   }, [marcacionesFiltradas, parametros]);
 
-  const { politicas, totalEmpleados } = resultado;
+  const { politicas, totalEmpleados, error: polError } = resultado;
 
   const setParam = (clave, valor) => setParametros((prev) => ({ ...prev, [clave]: valor }));
   const resetParams = () => setParametros({ ...PARAMS_DEFAULT });
@@ -1657,15 +1681,17 @@ function PolView({ marc: marcaciones = [] }) {
       }).join("")}
     </body></html>`;
 
-    const blob = new Blob([htmlResumen], { type: "application/vnd.ms-excel;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "Politicas_" + (sedeSel !== "Todas" ? sedeSel + "_" : "") + (mesSel !== "Todos" ? mesSel + "_" : "") + fecha + ".xls";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    try {
+      const blob = new Blob([htmlResumen], { type: "application/vnd.ms-excel;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "Politicas_" + (sedeSel !== "Todas" ? sedeSel + "_" : "") + (mesSel !== "Todos" ? mesSel + "_" : "") + fecha + ".xls";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch(e) { alert("Error al exportar Excel: " + e.message); }
   };
 
   return (
@@ -1679,6 +1705,8 @@ function PolView({ marc: marcaciones = [] }) {
           <p style={{color:C.td,fontSize:11,margin:"3px 0 0",display:"flex",alignItems:"center",gap:6}}>
             {calculando
               ? <><span style={{width:10,height:10,borderRadius:"50%",border:"2px solid "+C.p,borderTopColor:"transparent",display:"inline-block",animation:"spin 0.7s linear infinite"}} /><span style={{color:C.p}}>Calculando politicas... {progresoPol}%</span><span style={{width:80,height:4,background:C.bd,borderRadius:2,overflow:"hidden",display:"inline-block",marginLeft:6}}><span style={{width:progresoPol+"%",height:"100%",background:C.p,display:"block",borderRadius:2,transition:"width 0.2s"}} /></span></>
+              : polError
+              ? <span style={{color:C.dg}}>{polError}</span>
               : <span>{totalEmpleados} empleados evaluados {sedeSel !== "Todas" ? `en ${sedeSel}` : "en todas las sedes"}{mesSel !== "Todos" ? ` · ${mesSel}` : ""} | 9 politicas activas</span>
             }
           </p>
@@ -1918,14 +1946,14 @@ function PolView({ marc: marcaciones = [] }) {
         <div style={{padding:20,borderRadius:16,background:C.sf,border:"1px solid "+C.bd,boxShadow:"0 1px 4px rgba(31,107,46,0.07)"}}>
           <h3 style={{color:C.w,fontSize:12,fontWeight:700,margin:"0 0 10px"}}>Cumplimiento por Politica</h3>
           <ResponsiveContainer width="100%" height={300}>
-            <ReBarChart data={barData} layout="vertical" margin={{left:35}}>
+            <BarChart data={barData} layout="vertical" margin={{left:35}}>
               <CartesianGrid strokeDasharray="3 3" stroke={C.bd} />
               <XAxis type="number" tick={{fill:C.tm,fontSize:9}} />
               <YAxis dataKey="name" type="category" tick={{fill:C.tm,fontSize:9}} width={35} />
               <Tooltip content={<Tip />} />
               <Bar dataKey="cumple" name="Cumple" stackId="a" fill={C.p} />
               <Bar dataKey="noCumple" name="No Cumple" stackId="a" fill={C.dg} />
-            </ReBarChart>
+            </BarChart>
           </ResponsiveContainer>
         </div>
         <div style={{padding:20,borderRadius:16,background:C.sf,border:"1px solid "+C.bd,boxShadow:"0 1px 4px rgba(31,107,46,0.07)"}}>
@@ -1991,55 +2019,106 @@ function RulesView() {
    1. EFICIENCIA VIEW — Personal vs Ventas por hora/sede
    ============================================================ */
 function EficienciaView({ marc, fact }) {
-  const sedes = useMemo(() => {
-    const s = {}; marc.forEach(m => { if (m.DEPENDENCIA) s[m.DEPENDENCIA] = 1; });
-    return ["Todas", ...Object.keys(s).sort()];
-  }, [marc]);
-  const meses = useMemo(() => {
+  const optsEfi = useMemo(() => {
     const ORD = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
-    const s = {};
-    marc.forEach(m => { if (m.MES) s[m.MES] = 1; });
-    fact.forEach(f => { if (f.mes) s[f.mes] = 1; });
-    return ["Todos", ...Object.keys(s).sort((a,b) => ORD.indexOf(a)-ORD.indexOf(b))];
+    const sedes = {}, secciones = {}, clases = {}, meses = {}, semanas = {}, dias = {};
+    marc.forEach(m => {
+      if (m.DEPENDENCIA) sedes[m.DEPENDENCIA] = 1;
+      if (m.CENTROCOSTO) secciones[m.CENTROCOSTO] = 1;
+      if (m.MES) meses[m.MES] = 1;
+      if (m.SEMANA) semanas[m.SEMANA] = 1;
+      if (m.DIA != null && String(m.DIA) !== "undefined" && String(m.DIA) !== "") dias[String(m.DIA)] = 1;
+    });
+    fact.forEach(f => {
+      if (f.sede) sedes[f.sede] = 1;
+      if (f.clase) clases[f.clase] = 1;
+      if (f.mes) meses[f.mes] = 1;
+      if (f.dia != null && f.dia > 0) dias[String(f.dia)] = 1;
+    });
+    return {
+      sedes: ["Todas", ...Object.keys(sedes).sort()],
+      secciones: ["Todas", ...Object.keys(secciones).sort()],
+      clases: ["Todas", ...Object.keys(clases).sort()],
+      meses: (function(){ return ["Todos", ...Object.keys(meses).sort(function(a,b){ return ORD.indexOf(a.toLowerCase().trim()) - ORD.indexOf(b.toLowerCase().trim()); })]; })(),
+      diasSemana: ["Todos", "Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado", "Domingo"],
+      semanas: ["Todas", ...Object.keys(semanas)],
+      dias: ["Todos", ...Object.keys(dias).sort((a, b) => (+a) - (+b))],
+    };
   }, [marc, fact]);
 
-  const [sede, setSede] = useState("Todas");
-  const [mes,  setMes]  = useState("Todos");
+  const filtrosDefault = { sede:"Todas", seccion:"Todas", clase:"Todas", mes:"Todos", dsem:"Todos", semana:"Todas", dia:"Todos", quincena:"Todos" };
+  const [f, setF] = useState(filtrosDefault);
+  const aplicar = (k, v) => setF(prev => Object.assign({}, prev, (function(){ var o={}; o[k]=v; return o; })()));
+  const limpiar = () => setF(filtrosDefault);
+
+  const marcFilt = useMemo(() => {
+    const qv = f.quincena !== "Todos" ? (f.quincena === "Quincena" ? "Si" : "No") : null;
+    return marc.filter(m => {
+      if (f.sede    !== "Todas"  && m.DEPENDENCIA !== f.sede)    return false;
+      if (f.seccion !== "Todas"  && m.CENTROCOSTO !== f.seccion) return false;
+      if (f.mes     !== "Todos"  && m.MES         !== f.mes)     return false;
+      if (f.dsem    !== "Todos"  && m.DIA_SEMANA  !== f.dsem)    return false;
+      if (f.semana  !== "Todas"  && m.SEMANA      !== f.semana)  return false;
+      if (f.dia     !== "Todos"  && String(m.DIA) !== f.dia)     return false;
+      if (qv !== null            && m.QUINCENA    !== qv)        return false;
+      return true;
+    });
+  }, [marc, f]);
+
+  const factFilt = useMemo(() => {
+    return fact.filter(x => {
+      if (f.sede  !== "Todas" && x.sede  !== f.sede)  return false;
+      if (f.clase !== "Todas" && x.clase !== f.clase) return false;
+      if (f.mes   !== "Todos" && x.mes   !== f.mes)   return false;
+      if (f.dia   !== "Todos" && String(x.dia) !== f.dia) return false;
+      return true;
+    });
+  }, [fact, f]);
 
   const datos = useMemo(() => {
-    const fm = marc.filter(m => (sede==="Todas"||m.DEPENDENCIA===sede) && (mes==="Todos"||m.MES===mes));
-    const ff = fact.filter(f => (sede==="Todas"||f.sede===sede) && (mes==="Todos"||f.mes===mes));
+    const fm = marcFilt;
+    const ff = factFilt;
     const fechas = {}; fm.forEach(m => { fechas[m.FECHA]=1; });
     const nd = Math.max(Object.keys(fechas).length, 1);
     return HC.map((hc, i) => {
       const hNum = HC_NUM[i];
       const personal = fm.reduce((s,m) => s+(m[hc]||0), 0) / nd;
-      const factH = ff.filter(f => f.hora === hNum);
-      const diasF = {}; factH.forEach(f => { diasF[f.dia+"_"+f.mes]=1; });
+      const factH = ff.filter(fx => fx.hora === hNum);
+      const diasF = {}; factH.forEach(fx => { diasF[fx.dia+"_"+fx.mes]=1; });
       const ndf = Math.max(Object.keys(diasF).length, 1);
-      const ventas = factH.reduce((s,f) => s+(f.nfact||0), 0) / ndf;
+      const ventas = factH.reduce((s,fx) => s+(fx.nfact||0), 0) / ndf;
       const eficiencia = personal > 0 ? Math.round((ventas/personal)*10)/10 : 0;
       return { hora: HL[i], hNum, personal: Math.round(personal*10)/10, ventas: Math.round(ventas*10)/10, eficiencia };
     });
-  }, [marc, fact, sede, mes]);
+  }, [marcFilt, factFilt]);
 
   const rankingSedes = useMemo(() => {
-    const ORD = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
-    return sedes.filter(s=>s!=="Todas").map(s => {
-      const fm = marc.filter(m => m.DEPENDENCIA===s && (mes==="Todos"||m.MES===mes));
-      const ff = fact.filter(f => f.sede===s && (mes==="Todos"||f.mes===mes));
+    return optsEfi.sedes.filter(s=>s!=="Todas").map(s => {
+      const fm = marcFilt.filter(m => m.DEPENDENCIA===s);
+      const ff = factFilt.filter(fx => fx.sede===s);
       const fechas={}; fm.forEach(m=>{fechas[m.FECHA]=1;});
       const nd = Math.max(Object.keys(fechas).length,1);
       const totalPersonal = fm.reduce((sum,m) => { let p=0; HC.forEach(hc=>{p+=(m[hc]||0);}); return sum+p; },0)/nd;
-      const diasF={}; ff.forEach(f=>{diasF[f.dia+"_"+f.mes]=1;});
+      const diasF={}; ff.forEach(fx=>{diasF[fx.dia+"_"+fx.mes]=1;});
       const ndf = Math.max(Object.keys(diasF).length,1);
-      const ventas = ff.reduce((s,f)=>s+(f.nfact||0),0)/ndf;
+      const ventas = ff.reduce((s,fx)=>s+(fx.nfact||0),0)/ndf;
       const ef = totalPersonal>0 ? Math.round((ventas/totalPersonal)*10)/10 : 0;
       return { sede:s, personal:Math.round(totalPersonal), ventas:Math.round(ventas), eficiencia:ef };
     }).sort((a,b) => b.eficiencia-a.eficiencia);
-  }, [marc, fact, mes, sedes]);
+  }, [marcFilt, factFilt, optsEfi.sedes]);
 
   const hasFact = fact.length > 0;
+  const hasMarc = marc.length > 0;
+
+  const filtrosVisibles = [];
+  if (optsEfi.sedes.length > 1) filtrosVisibles.push({ label:"Sede", key:"sede", opts:optsEfi.sedes });
+  if (hasMarc && optsEfi.secciones.length > 1) filtrosVisibles.push({ label:"Seccion", key:"seccion", opts:optsEfi.secciones });
+  if (hasFact && optsEfi.clases.length > 1) filtrosVisibles.push({ label:"Clase", key:"clase", opts:optsEfi.clases });
+  if (optsEfi.meses.length > 1) filtrosVisibles.push({ label:"Mes", key:"mes", opts:optsEfi.meses });
+  if (hasMarc) filtrosVisibles.push({ label:"DiaSem", key:"dsem", opts:optsEfi.diasSemana });
+  if (hasMarc && optsEfi.semanas.length > 1) filtrosVisibles.push({ label:"Semana", key:"semana", opts:optsEfi.semanas });
+  if (optsEfi.dias.length > 1) filtrosVisibles.push({ label:"Dia", key:"dia", opts:optsEfi.dias });
+  if (hasMarc) filtrosVisibles.push({ label:"Quincena", key:"quincena", opts:["Todos","Quincena","No Quincena"] });
 
   return (
     <div>
@@ -2048,9 +2127,11 @@ function EficienciaView({ marc, fact }) {
         <p style={{color:C.td,fontSize:12,margin:0}}>¿En qué horas tienes más personal del necesario? ¿Cuándo falta cobertura?</p>
       </div>
 
-      <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
-        <Pill label="Sede" value={sede} options={sedes} onChange={setSede} />
-        <Pill label="Mes"  value={mes}  options={meses}  onChange={setMes} />
+      <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:20,padding:10,borderRadius:10,background:"rgba(255,255,255,0.85)",border:"1px solid "+C.bd}}>
+        {filtrosVisibles.map(fp => (
+          <Pill key={fp.key} label={fp.label} value={f[fp.key]} options={fp.opts} onChange={function(v){aplicar(fp.key,v);}} />
+        ))}
+        <button onClick={limpiar} style={{padding:"6px 10px",borderRadius:7,fontSize:10,background:C.sa,border:"1px solid "+C.bd,color:C.tm,cursor:"pointer",marginLeft:6}}>Limpiar</button>
       </div>
 
       {!hasFact && (
@@ -2067,7 +2148,7 @@ function EficienciaView({ marc, fact }) {
         <div style={{marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
           <div>
             <div style={{fontWeight:700,fontSize:14,color:C.t}}>Personal vs Transacciones por Hora</div>
-            <div style={{fontSize:11,color:C.td,marginTop:2}}>Promedio diario · {sede!=="Todas"?sede:"todas las sedes"} · {mes!=="Todos"?mes:"todos los meses"}</div>
+            <div style={{fontSize:11,color:C.td,marginTop:2}}>Promedio diario · {f.sede!=="Todas"?f.sede:"todas las sedes"} · {f.mes!=="Todos"?f.mes:"todos los meses"}</div>
           </div>
           <div style={{display:"flex",gap:16,fontSize:11,color:C.td,flexWrap:"wrap"}}>
             <span><span style={{display:"inline-block",width:10,height:10,borderRadius:2,background:"#1f6b2e",marginRight:4}}/>Personas presentes</span>
@@ -2126,7 +2207,7 @@ function EficienciaView({ marc, fact }) {
         <div style={{borderRadius:12,border:"1px solid "+C.bd,overflow:"hidden",boxShadow:"0 1px 4px rgba(31,107,46,0.07)"}}>
           <div style={{padding:"13px 18px",background:"linear-gradient(135deg,#0f1f13,#1f6b2e)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div style={{color:"#e8f5eb",fontWeight:700,fontSize:13}}>Ranking de Sedes por Eficiencia</div>
-            <div style={{color:"#7aab85",fontSize:11}}>{mes!=="Todos"?mes:"todos los meses"}</div>
+            <div style={{color:"#7aab85",fontSize:11}}>{f.mes!=="Todos"?f.mes:"todos los meses"}</div>
           </div>
           <div style={{background:C.sf}}>
             <div style={{display:"grid",gridTemplateColumns:"36px 1fr 120px 140px 160px",gap:0,padding:"10px 18px",borderBottom:"1px solid "+C.bd,background:C.sa}}>
@@ -2161,8 +2242,8 @@ function EficienciaView({ marc, fact }) {
 /* ============================================================
    RIESGO VIEW — Top empleados con más infracciones
    ============================================================ */
-function RiesgoView({ marc }) {
-  const params = PARAMS_DEFAULT;
+function RiesgoView({ marc, parametros }) {
+  const params = parametros;
   const [sedeSel, setSedeSel] = useState("Todas");
   const [mesSel,  setMesSel]  = useState("Todos");
   const [polFiltro, setPolFiltro] = useState("Todas");
@@ -2172,7 +2253,7 @@ function RiesgoView({ marc }) {
   const meses = useMemo(() => {
     const ORD=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
     const s={}; marc.forEach(m=>{if(m.MES)s[m.MES]=1;});
-    return ["Todos",...Object.keys(s).sort((a,b)=>ORD.indexOf(a)-ORD.indexOf(b))];
+    return ["Todos",...Object.keys(s).sort((a,b)=>ORD.indexOf(a.toLowerCase().trim())-ORD.indexOf(b.toLowerCase().trim()))];
   }, [marc]);
 
   const [riesgoResult, setRiesgoResult] = useState({ politicas: [], ranking: [] });
@@ -2331,8 +2412,8 @@ function RiesgoView({ marc }) {
 /* ============================================================
    TENDENCIA VIEW — Evolución mes a mes
    ============================================================ */
-function TendenciaView({ marc }) {
-  const params = PARAMS_DEFAULT;
+function TendenciaView({ marc, parametros }) {
+  const params = parametros;
   const [sedeSel, setSedeSel] = useState("Todas");
   const [polSel,  setPolSel]  = useState("Todas");
 
@@ -2344,7 +2425,7 @@ function TendenciaView({ marc }) {
 
   useEffect(() => {
     const mesesSet={}; marc.forEach(m=>{if(m.MES)mesesSet[m.MES]=1;});
-    const mesesLista = Object.keys(mesesSet).sort((a,b)=>ORD_MES.indexOf(a)-ORD_MES.indexOf(b));
+    const mesesLista = Object.keys(mesesSet).sort((a,b)=>ORD_MES.indexOf(a.toLowerCase().trim())-ORD_MES.indexOf(b.toLowerCase().trim()));
     if (mesesLista.length < 2) { setTendencia({ series:[], hayPocosDatos:true }); return; }
     setTendCalc(true);
     let cancelled = false;
@@ -2371,8 +2452,8 @@ function TendenciaView({ marc }) {
         if (!cancelled) { setTendencia({ series, hayPocosDatos:false }); setTendCalc(false); }
       }
     }
-    setTimeout(nextMes, 50);
-    return () => { cancelled = true; };
+    var t = setTimeout(nextMes, 50);
+    return () => { cancelled = true; clearTimeout(t); };
   }, [marc, sedeSel]);
 
   const polsOpts = ["Todas", ...POLITICAS_DEF.map(p=>p.id)];
@@ -2925,7 +3006,7 @@ function MasterFilterModal({ data, masterFilter, setMasterFilter, filteredData, 
   });
   var sedesList = Object.keys(allSedes).sort();
   var ORD_MES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
-  var mesesList = Object.keys(allMeses).sort(function(a,b){ return ORD_MES.indexOf(a) - ORD_MES.indexOf(b); });
+  var mesesList = Object.keys(allMeses).sort(function(a,b){ return ORD_MES.indexOf(a.toLowerCase().trim()) - ORD_MES.indexOf(b.toLowerCase().trim()); });
 
   var sedeSel = masterFilter.sedes ? Object.keys(masterFilter.sedes).find(function(k){ return masterFilter.sedes[k]; }) : null;
   var _busq = useState(""), busqSede = _busq[0], setBusqSede = _busq[1];
@@ -3042,12 +3123,15 @@ function App() {
   var _lu = useState(""), lu = _lu[0], setLU = _lu[1];
   var _lp = useState(""), lp = _lp[0], setLP = _lp[1];
   var _le = useState(""), le = _le[0], setLE = _le[1];
+  var _la = useState(0), loginAttempts = _la[0], setLoginAttempts = _la[1];
+  var _lb = useState(0), loginBlockedUntil = _lb[0], setLoginBlockedUntil = _lb[1];
   var _sp = useState(false), showP = _sp[0], setSP = _sp[1];
   var _fs = useState(""), fSt = _fs[0], setFS = _fs[1];
   var _pr = useState(false), proc = _pr[0], setProc = _pr[1];
   var _cr = useState(false), confirmReset = _cr[0], setConfirmReset = _cr[1];
   var _mf = useState({sedes:null,meses:null,clases:null,secciones:null}), masterFilter = _mf[0], setMasterFilter = _mf[1];
   var _mfOpen = useState(false), masterFilterOpen = _mfOpen[0], setMasterFilterOpen = _mfOpen[1];
+  var _params = useState(Object.assign({}, PARAMS_DEFAULT)), parametrosGlobal = _params[0], setParametrosGlobal = _params[1];
   var fRef = useRef(null);
 
   /* Actualizar tema global en cada render */
@@ -3061,10 +3145,29 @@ function App() {
     });
   };
 
-  var login = function() {
+  var login = async function() {
+    var now = Date.now();
+    if (loginBlockedUntil > now) {
+      var segsRestantes = Math.ceil((loginBlockedUntil - now) / 1000);
+      setLE("Demasiados intentos. Espera " + segsRestantes + " segundos.");
+      return;
+    }
     var u = USERS[lu.toLowerCase()];
-    if (u && u.pw === lp) { setUser({role:u.role,name:u.name}); setLE(""); }
-    else setLE("Credenciales incorrectas");
+    if (!u) {
+      var newAttempts = loginAttempts + 1;
+      setLoginAttempts(newAttempts);
+      if (newAttempts >= 5) { setLoginBlockedUntil(now + 30000); setLE("5 intentos fallidos. Bloqueado por 30 segundos."); setLoginAttempts(0); }
+      else setLE("Credenciales incorrectas (" + newAttempts + "/5)");
+      return;
+    }
+    var h = await hashPw(lp);
+    if (h === u.pw) { setUser({role:u.role,name:u.name}); setLE(""); setLoginAttempts(0); }
+    else {
+      var newAttempts = loginAttempts + 1;
+      setLoginAttempts(newAttempts);
+      if (newAttempts >= 5) { setLoginBlockedUntil(now + 30000); setLE("5 intentos fallidos. Bloqueado por 30 segundos."); setLoginAttempts(0); }
+      else setLE("Credenciales incorrectas (" + newAttempts + "/5)");
+    }
   };
 
   var doUpload = function(e) {
@@ -3120,8 +3223,22 @@ function App() {
             var text = await file.text();
             var json = JSON.parse(text);
             if (json._type === "seguimiento_memory" || json._type === "staffpulse_memory") {
-              // Normalizar sedes al cargar desde memoria
-              var marcNorm = (json.marcaciones||[]).map(function(m){ var c=Object.assign({},m); if(c.DEPENDENCIA) c.DEPENDENCIA=normSede(c.DEPENDENCIA); return c; });
+              // Normalizar sedes y reconstruir BREAK_PAIRS al cargar desde memoria
+              var marcNorm = (json.marcaciones||[]).map(function(m){ var c=Object.assign({},m); if(c.DEPENDENCIA) c.DEPENDENCIA=normSede(c.DEPENDENCIA);
+                if (!c.BREAK_PAIRS && c.BREAK_DETALLE) {
+                  c.BREAK_PAIRS = c.BREAK_DETALLE.split(" | ").map(function(seg) {
+                    var match = seg.match(/(\d+):(\d+)-(\d+):(\d+)\s*\((\d+)min\s*(.*?)\)/);
+                    if (!match) return null;
+                    var sH = parseInt(match[1]) + parseInt(match[2])/60;
+                    var lH = parseInt(match[3]) + parseInt(match[4])/60;
+                    var dur = parseInt(match[5]);
+                    var tipoStr = match[6].trim();
+                    var tipo = tipoStr === "Corto" ? "BREAK_CORTO" : tipoStr === "TP Legal" ? "TP_LEGAL" : "TP_ILEGAL";
+                    return { salidaH:sH, llegadaH:lH, duracionMin:dur, tipo:tipo };
+                  }).filter(Boolean);
+                }
+                if (!c.BREAK_PAIRS) c.BREAK_PAIRS = [];
+                return c; });
               var factNorm = (json.facturas||[]).map(function(f){ var c=Object.assign({},f); if(c.sede) c.sede=normSede(c.sede); return c; });
               setData({marc:marcNorm,fact:factNorm});
               setFS("Memoria cargada: " + (json.marcaciones?json.marcaciones.length:0) + " registros");
@@ -3244,21 +3361,22 @@ function App() {
   };
 
   var descargarArchivo = function(contenido, nombreArchivo, tipo) {
-    var blob = new Blob([contenido], {type: tipo});
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement("a");
-    a.href = url;
-    a.download = nombreArchivo;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    try {
+      var blob = new Blob([contenido], {type: tipo});
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = nombreArchivo;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch(e) { alert("Error al descargar: " + e.message); }
   };
 
   var expMem = function() {
-    var marcClean = limpiarMarc(filteredData.marc);
     var sedeName = masterFilter.sedes ? Object.keys(masterFilter.sedes).find(function(k){return masterFilter.sedes[k];}) || "" : "";
-    var jsonStr = JSON.stringify({_type:"seguimiento_memory",_v:2,marcaciones:marcClean,facturas:filteredData.fact}, null, 2);
+    var jsonStr = JSON.stringify({_type:"seguimiento_memory",_v:2,marcaciones:filteredData.marc,facturas:filteredData.fact}, null, 2);
     var fecha = new Date().toISOString().slice(0,10);
     var nombre = "seguimiento_memoria_" + (sedeName ? sedeName.replace(/\s+/g,"_") + "_" : "") + fecha + ".json";
     descargarArchivo(jsonStr, nombre, "application/json");
@@ -3320,7 +3438,7 @@ function App() {
             color:"#ecfdf0",cursor:"pointer",boxShadow:"0 4px 20px rgba(31,107,46,0.4)",letterSpacing:"0.2px",marginBottom:20}}>Ingresar →</button>
           <div style={{padding:"10px 14px",borderRadius:12,background:"rgba(255,255,255,0.02)",border:"1px solid rgba(74,222,128,0.07)"}}>
             <p style={{color:"rgba(107,127,112,0.8)",fontSize:10,margin:0,textAlign:"center",lineHeight:"1.8",fontWeight:500}}>
-              <span style={{color:"rgba(74,222,128,0.6)",fontWeight:700}}>Demo:</span> admin / admin2026 · supervisor / super2026 · gerencia / gerencia2026
+              <span style={{color:"rgba(74,222,128,0.6)",fontWeight:700}}>Acceso:</span> Ingrese sus credenciales asignadas
             </p>
           </div>
         </div>
@@ -3408,7 +3526,7 @@ function App() {
         : <div style={{textAlign:"center",padding:40}}><p style={{color:C.w,fontSize:14}}>Sin datos cargados</p><button onClick={function(){setView("upload");}} style={{padding:"8px 16px",borderRadius:7,background:C.p,border:"none",color:"#fff",cursor:"pointer",marginTop:8,fontSize:12}}>Cargar Archivos</button></div>;
     } else if (view === "policies") {
       content = hasMarc
-        ? <PolView marc={filteredData.marc} />
+        ? <PolView marc={filteredData.marc} parametros={parametrosGlobal} setParametros={setParametrosGlobal} />
         : <div style={{textAlign:"center",padding:40}}><p style={{color:C.w}}>Politicas necesita datos de marcaciones</p><button onClick={function(){setView("upload");}} style={{padding:"8px 16px",borderRadius:7,background:C.p,border:"none",color:"#fff",cursor:"pointer",fontSize:12}}>Cargar</button></div>;
     } else if (view === "auditoria") {
       content = hasMarc
@@ -3420,11 +3538,11 @@ function App() {
         : <div style={{textAlign:"center",padding:40}}><p style={{color:C.w}}>Necesitas cargar marcaciones y facturas</p><button onClick={function(){setView("upload");}} style={{padding:"8px 16px",borderRadius:7,background:C.p,border:"none",color:"#fff",cursor:"pointer",fontSize:12}}>Cargar</button></div>;
     } else if (view === "riesgo") {
       content = hasMarc
-        ? <RiesgoView marc={filteredData.marc} />
+        ? <RiesgoView marc={filteredData.marc} parametros={parametrosGlobal} />
         : <div style={{textAlign:"center",padding:40}}><p style={{color:C.w}}>Necesitas cargar marcaciones</p><button onClick={function(){setView("upload");}} style={{padding:"8px 16px",borderRadius:7,background:C.p,border:"none",color:"#fff",cursor:"pointer",fontSize:12}}>Cargar</button></div>;
     } else if (view === "tendencia") {
       content = hasMarc
-        ? <TendenciaView marc={filteredData.marc} />
+        ? <TendenciaView marc={filteredData.marc} parametros={parametrosGlobal} />
         : <div style={{textAlign:"center",padding:40}}><p style={{color:C.w}}>Necesitas cargar marcaciones</p><button onClick={function(){setView("upload");}} style={{padding:"8px 16px",borderRadius:7,background:C.p,border:"none",color:"#fff",cursor:"pointer",fontSize:12}}>Cargar</button></div>;
     } else if (view === "rules") {
       content = <RulesView />;
@@ -3626,6 +3744,24 @@ function App() {
   );
 }
 
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { hasError: false, error: null }; }
+  static getDerivedStateFromError(error) { return { hasError: true, error: error }; }
+  componentDidCatch(error, info) { console.error("ErrorBoundary:", error, info); }
+  render() {
+    if (this.state.hasError) {
+      return React.createElement("div", {style:{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f0f5f1",fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif"}},
+        React.createElement("div", {style:{padding:40,borderRadius:20,background:"#fff",border:"1px solid #daeade",maxWidth:500,textAlign:"center",boxShadow:"0 4px 24px rgba(31,107,46,0.1)"}},
+          React.createElement("div", {style:{fontSize:40,marginBottom:16}}, "⚠️"),
+          React.createElement("h2", {style:{color:"#111a14",fontSize:18,fontWeight:700,margin:"0 0 8px"}}, "Algo salió mal"),
+          React.createElement("p", {style:{color:"#6b7f70",fontSize:13,margin:"0 0 16px"}}, String(this.state.error && this.state.error.message || "Error desconocido")),
+          React.createElement("button", {onClick:function(){window.location.reload();},style:{padding:"10px 24px",borderRadius:10,fontSize:13,fontWeight:700,background:"linear-gradient(135deg,#1f6b2e,#2d8a41)",border:"none",color:"#fff",cursor:"pointer"}}, "Recargar App")
+        )
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(React.createElement(App));
+root.render(React.createElement(ErrorBoundary, null, React.createElement(App)));
