@@ -34,8 +34,15 @@ var C = {
 var USERS={admin:{pw:"6051fc84a7a0d74c225fb18a496b09952da5642e60723ecae543298edd7d82d6",role:"admin",name:"Administrador"},supervisor:{pw:"9a0ee89e00a006877eca0c28eebeb38aa301469b9cce8012b6ee04b13079a7e8",role:"supervisor",name:"Supervisor"},gerencia:{pw:"2f8f191656429c28ea6f334a5d8568aa0f62f64674b87dd26546368e09f7f756",role:"gerencia",name:"Gerencia"}};
 
 async function hashPw(pw) {
-  var buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pw));
-  return Array.from(new Uint8Array(buf)).map(function(b){ return b.toString(16).padStart(2,"0"); }).join("");
+  try {
+    var buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pw));
+    return Array.from(new Uint8Array(buf)).map(function(b){ return b.toString(16).padStart(2,"0"); }).join("");
+  } catch(e) {
+    // Fallback: simple hash for HTTP environments where crypto.subtle is unavailable
+    var hash = 0;
+    for (var i = 0; i < pw.length; i++) { hash = ((hash << 5) - hash) + pw.charCodeAt(i); hash |= 0; }
+    return "fallback_" + Math.abs(hash).toString(16);
+  }
 }
 
 var HC=["0:00","4:00","5:00","6:00","7:00","8:00","9:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00","20:00","21:00","22:00","23:00"];
@@ -842,26 +849,55 @@ function ResumenView({ marc, fact, parametros }) {
     // Venta total
     const ventaTotal = fact.reduce((s,f) => s+(f.venta||0), 0);
 
-    // Políticas por sede
-    const sedesCriticas = [];
-    const sedesOk = [];
-    Object.keys(sedesMap).forEach(sede => {
-      const marcSede = marc.filter(m => m.DEPENDENCIA === sede);
-      const result = evaluarPoliticas(marcSede, parametros, "Todas");
-      const promCumpl = result.politicas.length > 0 ? Math.round(result.politicas.reduce((s,p) => s+p.cumplimiento, 0) / result.politicas.length) : 100;
-      const polsRojas = result.politicas.filter(p => p.cumplimiento < 70).length;
-      const obj = { sede:sede, cumplimiento:promCumpl, empleados:result.totalEmpleados, polsRojas:polsRojas, registros:sedesMap[sede] };
-      if (promCumpl < 70) sedesCriticas.push(obj);
-      else sedesOk.push(obj);
-    });
-    sedesCriticas.sort((a,b) => a.cumplimiento - b.cumplimiento);
-    sedesOk.sort((a,b) => a.cumplimiento - b.cumplimiento);
-
-    // Políticas globales
+    // Políticas globales (UNA sola llamada para todo)
     const globalResult = evaluarPoliticas(marc, parametros, "Todas");
     const promGlobal = globalResult.politicas.length > 0 ? Math.round(globalResult.politicas.reduce((s,p) => s+p.cumplimiento, 0) / globalResult.politicas.length) : 100;
     const polsEnRojo = globalResult.politicas.filter(p => p.cumplimiento < 70);
     const polsEnAmarillo = globalResult.politicas.filter(p => p.cumplimiento >= 70 && p.cumplimiento < 90);
+
+    // Per-sede cumplimiento derivado del resultado global (sin recalcular)
+    const empPorSede = {};
+    marc.forEach(m => {
+      if (m.DEPENDENCIA && m.IDENTIFICACION) {
+        if (!empPorSede[m.DEPENDENCIA]) empPorSede[m.DEPENDENCIA] = {};
+        empPorSede[m.DEPENDENCIA][m.IDENTIFICACION] = 1;
+      }
+    });
+    const violPorSede = {};
+    const violPorSedePol = {}; // sede → polId → {empleados uniquos}
+    globalResult.politicas.forEach(pol => {
+      pol.violadores.forEach(v => {
+        if (v.sede) {
+          if (!violPorSede[v.sede]) violPorSede[v.sede] = {};
+          violPorSede[v.sede][v.id] = (violPorSede[v.sede][v.id]||0) + 1;
+          if (!violPorSedePol[v.sede]) violPorSedePol[v.sede] = {};
+          if (!violPorSedePol[v.sede][pol.id]) violPorSedePol[v.sede][pol.id] = {};
+          violPorSedePol[v.sede][pol.id][v.id] = 1;
+        }
+      });
+    });
+
+    const sedesCriticas = [];
+    const sedesOk = [];
+    Object.keys(sedesMap).forEach(sede => {
+      const empCount = empPorSede[sede] ? Object.keys(empPorSede[sede]).length : 0;
+      const violCount = violPorSede[sede] ? Object.keys(violPorSede[sede]).length : 0;
+      const cumpl = empCount > 0 ? Math.round((1 - violCount / empCount) * 100) : 100;
+      // Contar cuántas políticas tienen cumplimiento <70% en esta sede
+      var polsRojas = 0;
+      if (violPorSedePol[sede] && empCount > 0) {
+        Object.keys(violPorSedePol[sede]).forEach(function(polId) {
+          var afectados = Object.keys(violPorSedePol[sede][polId]).length;
+          var polCumpl = Math.round((1 - afectados / empCount) * 100);
+          if (polCumpl < 70) polsRojas++;
+        });
+      }
+      const obj = { sede:sede, cumplimiento:cumpl, empleados:empCount, polsRojas:polsRojas, registros:sedesMap[sede] };
+      if (cumpl < 70) sedesCriticas.push(obj);
+      else sedesOk.push(obj);
+    });
+    sedesCriticas.sort((a,b) => a.cumplimiento - b.cumplimiento);
+    sedesOk.sort((a,b) => a.cumplimiento - b.cumplimiento);
 
     // Top empleados infractores
     const empInfMap = {};
@@ -1132,7 +1168,13 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
     let maxColaboradores = 0, maxTransacciones = 0, ventaTotal = 0;
     datosGrafico.forEach((x) => { if (x.colaboradores > maxColaboradores) maxColaboradores = x.colaboradores; });
     datosGrafico.forEach((x) => { if (x.transacciones > maxTransacciones) maxTransacciones = x.transacciones; });
-    facturas.forEach((f) => { ventaTotal += f.venta || 0; });
+    facturas.forEach((f) => {
+      if (filtros.sede  !== "Todas" && f.sede  !== filtros.sede)  return;
+      if (filtros.clase !== "Todas" && f.clase !== filtros.clase) return;
+      if (filtros.mes   !== "Todos" && f.mes   !== filtros.mes)   return;
+      if (filtros.dia   !== "Todos" && String(f.dia) !== filtros.dia) return;
+      ventaTotal += f.venta || 0;
+    });
 
     return {
       empleados: Object.keys(empleadosUnicos).length,
@@ -1142,7 +1184,7 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
       maxTransacciones: maxTransacciones.toFixed(0),
       ventaTotal,
     };
-  }, [marcacionesFiltradas, facturas, datosGrafico]);
+  }, [marcacionesFiltradas, facturas, datosGrafico, filtros]);
 
   // -- Helpers --
   const aplicarFiltro = (clave, valor) => {
@@ -2335,16 +2377,28 @@ function EficienciaView({ marc, fact }) {
   }, [marcFilt, factFilt]);
 
   const rankingSedes = useMemo(() => {
+    // Group data by sede in one pass instead of filtering per sede
+    const bySedeMarc = {}, bySedeFact = {};
+    marcFilt.forEach(m => {
+      var s = m.DEPENDENCIA; if (!s) return;
+      if (!bySedeMarc[s]) bySedeMarc[s] = [];
+      bySedeMarc[s].push(m);
+    });
+    factFilt.forEach(f => {
+      var s = f.sede; if (!s) return;
+      if (!bySedeFact[s]) bySedeFact[s] = [];
+      bySedeFact[s].push(f);
+    });
     return optsEfi.sedes.filter(s=>s!=="Todas").map(s => {
-      const fm = marcFilt.filter(m => m.DEPENDENCIA===s);
-      const ff = factFilt.filter(fx => fx.sede===s);
-      const fechas={}; fm.forEach(m=>{fechas[m.FECHA]=1;});
-      const nd = Math.max(Object.keys(fechas).length,1);
-      const totalPersonal = fm.reduce((sum,m) => { let p=0; HC.forEach(hc=>{p+=(m[hc]||0);}); return sum+p; },0)/nd;
-      const diasF={}; ff.forEach(fx=>{diasF[fx.dia+"_"+fx.mes]=1;});
-      const ndf = Math.max(Object.keys(diasF).length,1);
-      const ventas = ff.reduce((s,fx)=>s+(fx.nfact||0),0)/ndf;
-      const ef = totalPersonal>0 ? Math.round((ventas/totalPersonal)*10)/10 : 0;
+      var fm = bySedeMarc[s] || [];
+      var ff = bySedeFact[s] || [];
+      var fechas={}; fm.forEach(m=>{fechas[m.FECHA]=1;});
+      var nd = Math.max(Object.keys(fechas).length,1);
+      var totalPersonal = fm.reduce((sum,m) => { var p=0; HC.forEach(hc=>{p+=(m[hc]||0);}); return sum+p; },0)/nd;
+      var diasF={}; ff.forEach(fx=>{diasF[fx.dia+"_"+fx.mes]=1;});
+      var ndf = Math.max(Object.keys(diasF).length,1);
+      var ventas = ff.reduce((sum,fx)=>sum+(fx.nfact||0),0)/ndf;
+      var ef = totalPersonal>0 ? Math.round((ventas/totalPersonal)*10)/10 : 0;
       return { sede:s, personal:Math.round(totalPersonal), ventas:Math.round(ventas), eficiencia:ef };
     }).sort((a,b) => b.eficiencia-a.eficiencia);
   }, [marcFilt, factFilt, optsEfi.sedes]);
@@ -3580,7 +3634,11 @@ function App() {
   var SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutos
 
   useEffect(function() {
+    var lastReset = 0;
     function resetTimer() {
+      var now = Date.now();
+      if (now - lastReset < 60000) return; // throttle: max 1 reset per minute
+      lastReset = now;
       if (sessionTimer.current) clearTimeout(sessionTimer.current);
       if (user) {
         sessionTimer.current = setTimeout(function() {
@@ -3592,7 +3650,7 @@ function App() {
         }, SESSION_TIMEOUT);
       }
     }
-    var events = ["click","keydown","mousemove","touchstart","scroll"];
+    var events = ["click","keydown","touchstart"];
     events.forEach(function(ev){ window.addEventListener(ev, resetTimer); });
     resetTimer();
     return function() {
@@ -3613,28 +3671,30 @@ function App() {
   };
 
   var login = async function() {
-    var now = Date.now();
-    if (loginBlockedUntil > now) {
-      var segsRestantes = Math.ceil((loginBlockedUntil - now) / 1000);
-      setLE("Demasiados intentos. Espera " + segsRestantes + " segundos.");
-      return;
-    }
-    var u = USERS[lu.toLowerCase()];
-    if (!u) {
-      var newAttempts = loginAttempts + 1;
-      setLoginAttempts(newAttempts);
-      if (newAttempts >= 5) { setLoginBlockedUntil(now + 30000); setLE("5 intentos fallidos. Bloqueado por 30 segundos."); setLoginAttempts(0); }
-      else setLE("Credenciales incorrectas (" + newAttempts + "/5)");
-      return;
-    }
-    var h = await hashPw(lp);
-    if (h === u.pw) { setUser({role:u.role,name:u.name}); setLE(""); setLoginAttempts(0); }
-    else {
-      var newAttempts = loginAttempts + 1;
-      setLoginAttempts(newAttempts);
-      if (newAttempts >= 5) { setLoginBlockedUntil(now + 30000); setLE("5 intentos fallidos. Bloqueado por 30 segundos."); setLoginAttempts(0); }
-      else setLE("Credenciales incorrectas (" + newAttempts + "/5)");
-    }
+    try {
+      var now = Date.now();
+      if (loginBlockedUntil > now) {
+        var segsRestantes = Math.ceil((loginBlockedUntil - now) / 1000);
+        setLE("Demasiados intentos. Espera " + segsRestantes + " segundos.");
+        return;
+      }
+      var u = USERS[lu.toLowerCase()];
+      if (!u) {
+        var newAttempts = loginAttempts + 1;
+        setLoginAttempts(newAttempts);
+        if (newAttempts >= 5) { setLoginBlockedUntil(now + 30000); setLE("5 intentos fallidos. Bloqueado por 30 segundos."); setLoginAttempts(0); }
+        else setLE("Credenciales incorrectas (" + newAttempts + "/5)");
+        return;
+      }
+      var h = await hashPw(lp);
+      if (h === u.pw) { setUser({role:u.role,name:u.name}); setLE(""); setLoginAttempts(0); }
+      else {
+        var newAttempts = loginAttempts + 1;
+        setLoginAttempts(newAttempts);
+        if (newAttempts >= 5) { setLoginBlockedUntil(now + 30000); setLE("5 intentos fallidos. Bloqueado por 30 segundos."); setLoginAttempts(0); }
+        else setLE("Credenciales incorrectas (" + newAttempts + "/5)");
+      }
+    } catch(e) { setLE("Error de autenticación: " + e.message); }
   };
 
   var doUpload = function(e) {

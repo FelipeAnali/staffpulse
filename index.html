@@ -51,8 +51,15 @@ var C = {
 var USERS={admin:{pw:"6051fc84a7a0d74c225fb18a496b09952da5642e60723ecae543298edd7d82d6",role:"admin",name:"Administrador"},supervisor:{pw:"9a0ee89e00a006877eca0c28eebeb38aa301469b9cce8012b6ee04b13079a7e8",role:"supervisor",name:"Supervisor"},gerencia:{pw:"2f8f191656429c28ea6f334a5d8568aa0f62f64674b87dd26546368e09f7f756",role:"gerencia",name:"Gerencia"}};
 
 async function hashPw(pw) {
-  var buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pw));
-  return Array.from(new Uint8Array(buf)).map(function(b){ return b.toString(16).padStart(2,"0"); }).join("");
+  try {
+    var buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pw));
+    return Array.from(new Uint8Array(buf)).map(function(b){ return b.toString(16).padStart(2,"0"); }).join("");
+  } catch(e) {
+    // Fallback: simple hash for HTTP environments where crypto.subtle is unavailable
+    var hash = 0;
+    for (var i = 0; i < pw.length; i++) { hash = ((hash << 5) - hash) + pw.charCodeAt(i); hash |= 0; }
+    return "fallback_" + Math.abs(hash).toString(16);
+  }
 }
 
 var HC=["0:00","4:00","5:00","6:00","7:00","8:00","9:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00","20:00","21:00","22:00","23:00"];
@@ -874,11 +881,15 @@ function ResumenView({ marc, fact, parametros }) {
       }
     });
     const violPorSede = {};
+    const violPorSedePol = {}; // sede → polId → {empleados uniquos}
     globalResult.politicas.forEach(pol => {
       pol.violadores.forEach(v => {
         if (v.sede) {
           if (!violPorSede[v.sede]) violPorSede[v.sede] = {};
           violPorSede[v.sede][v.id] = (violPorSede[v.sede][v.id]||0) + 1;
+          if (!violPorSedePol[v.sede]) violPorSedePol[v.sede] = {};
+          if (!violPorSedePol[v.sede][pol.id]) violPorSedePol[v.sede][pol.id] = {};
+          violPorSedePol[v.sede][pol.id][v.id] = 1;
         }
       });
     });
@@ -889,7 +900,15 @@ function ResumenView({ marc, fact, parametros }) {
       const empCount = empPorSede[sede] ? Object.keys(empPorSede[sede]).length : 0;
       const violCount = violPorSede[sede] ? Object.keys(violPorSede[sede]).length : 0;
       const cumpl = empCount > 0 ? Math.round((1 - violCount / empCount) * 100) : 100;
-      const polsRojas = cumpl < 70 ? 1 : 0;
+      // Contar cuántas políticas tienen cumplimiento <70% en esta sede
+      var polsRojas = 0;
+      if (violPorSedePol[sede] && empCount > 0) {
+        Object.keys(violPorSedePol[sede]).forEach(function(polId) {
+          var afectados = Object.keys(violPorSedePol[sede][polId]).length;
+          var polCumpl = Math.round((1 - afectados / empCount) * 100);
+          if (polCumpl < 70) polsRojas++;
+        });
+      }
       const obj = { sede:sede, cumplimiento:cumpl, empleados:empCount, polsRojas:polsRojas, registros:sedesMap[sede] };
       if (cumpl < 70) sedesCriticas.push(obj);
       else sedesOk.push(obj);
@@ -1166,7 +1185,13 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
     let maxColaboradores = 0, maxTransacciones = 0, ventaTotal = 0;
     datosGrafico.forEach((x) => { if (x.colaboradores > maxColaboradores) maxColaboradores = x.colaboradores; });
     datosGrafico.forEach((x) => { if (x.transacciones > maxTransacciones) maxTransacciones = x.transacciones; });
-    facturas.forEach((f) => { ventaTotal += f.venta || 0; });
+    facturas.forEach((f) => {
+      if (filtros.sede  !== "Todas" && f.sede  !== filtros.sede)  return;
+      if (filtros.clase !== "Todas" && f.clase !== filtros.clase) return;
+      if (filtros.mes   !== "Todos" && f.mes   !== filtros.mes)   return;
+      if (filtros.dia   !== "Todos" && String(f.dia) !== filtros.dia) return;
+      ventaTotal += f.venta || 0;
+    });
 
     return {
       empleados: Object.keys(empleadosUnicos).length,
@@ -1176,7 +1201,7 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
       maxTransacciones: maxTransacciones.toFixed(0),
       ventaTotal,
     };
-  }, [marcacionesFiltradas, facturas, datosGrafico]);
+  }, [marcacionesFiltradas, facturas, datosGrafico, filtros]);
 
   // -- Helpers --
   const aplicarFiltro = (clave, valor) => {
@@ -3663,28 +3688,30 @@ function App() {
   };
 
   var login = async function() {
-    var now = Date.now();
-    if (loginBlockedUntil > now) {
-      var segsRestantes = Math.ceil((loginBlockedUntil - now) / 1000);
-      setLE("Demasiados intentos. Espera " + segsRestantes + " segundos.");
-      return;
-    }
-    var u = USERS[lu.toLowerCase()];
-    if (!u) {
-      var newAttempts = loginAttempts + 1;
-      setLoginAttempts(newAttempts);
-      if (newAttempts >= 5) { setLoginBlockedUntil(now + 30000); setLE("5 intentos fallidos. Bloqueado por 30 segundos."); setLoginAttempts(0); }
-      else setLE("Credenciales incorrectas (" + newAttempts + "/5)");
-      return;
-    }
-    var h = await hashPw(lp);
-    if (h === u.pw) { setUser({role:u.role,name:u.name}); setLE(""); setLoginAttempts(0); }
-    else {
-      var newAttempts = loginAttempts + 1;
-      setLoginAttempts(newAttempts);
-      if (newAttempts >= 5) { setLoginBlockedUntil(now + 30000); setLE("5 intentos fallidos. Bloqueado por 30 segundos."); setLoginAttempts(0); }
-      else setLE("Credenciales incorrectas (" + newAttempts + "/5)");
-    }
+    try {
+      var now = Date.now();
+      if (loginBlockedUntil > now) {
+        var segsRestantes = Math.ceil((loginBlockedUntil - now) / 1000);
+        setLE("Demasiados intentos. Espera " + segsRestantes + " segundos.");
+        return;
+      }
+      var u = USERS[lu.toLowerCase()];
+      if (!u) {
+        var newAttempts = loginAttempts + 1;
+        setLoginAttempts(newAttempts);
+        if (newAttempts >= 5) { setLoginBlockedUntil(now + 30000); setLE("5 intentos fallidos. Bloqueado por 30 segundos."); setLoginAttempts(0); }
+        else setLE("Credenciales incorrectas (" + newAttempts + "/5)");
+        return;
+      }
+      var h = await hashPw(lp);
+      if (h === u.pw) { setUser({role:u.role,name:u.name}); setLE(""); setLoginAttempts(0); }
+      else {
+        var newAttempts = loginAttempts + 1;
+        setLoginAttempts(newAttempts);
+        if (newAttempts >= 5) { setLoginBlockedUntil(now + 30000); setLE("5 intentos fallidos. Bloqueado por 30 segundos."); setLoginAttempts(0); }
+        else setLE("Credenciales incorrectas (" + newAttempts + "/5)");
+      }
+    } catch(e) { setLE("Error de autenticación: " + e.message); }
   };
 
   var doUpload = function(e) {
