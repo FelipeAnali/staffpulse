@@ -3576,6 +3576,30 @@ function App() {
   var _mfOpen = useState(false), masterFilterOpen = _mfOpen[0], setMasterFilterOpen = _mfOpen[1];
   var _params = useState(Object.assign({}, PARAMS_DEFAULT)), parametrosGlobal = _params[0], setParametrosGlobal = _params[1];
   var fRef = useRef(null);
+  var sessionTimer = useRef(null);
+  var SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutos
+
+  useEffect(function() {
+    function resetTimer() {
+      if (sessionTimer.current) clearTimeout(sessionTimer.current);
+      if (user) {
+        sessionTimer.current = setTimeout(function() {
+          setUser(null);
+          setData({marc:[],fact:[]});
+          setView("upload");
+          setFS("");
+          setMasterFilter({sedes:null,meses:null,clases:null,secciones:null});
+        }, SESSION_TIMEOUT);
+      }
+    }
+    var events = ["click","keydown","mousemove","touchstart","scroll"];
+    events.forEach(function(ev){ window.addEventListener(ev, resetTimer); });
+    resetTimer();
+    return function() {
+      events.forEach(function(ev){ window.removeEventListener(ev, resetTimer); });
+      if (sessionTimer.current) clearTimeout(sessionTimer.current);
+    };
+  }, [user]);
 
   /* Actualizar tema global en cada render */
 
