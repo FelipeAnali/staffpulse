@@ -2994,6 +2994,206 @@ function AuditoriaView({ marc: marcaciones = [] }) {
 }
 
 /* === MAIN APP === */
+function ExportModal({ data, filteredData, masterFilter, limpiarMarc, descargarArchivo, onClose }) {
+  var _mode = useState("consolidado"), mode = _mode[0], setMode = _mode[1];
+  var _selSedes = useState(null), selSedes = _selSedes[0], setSelSedes = _selSedes[1];
+  var _progress = useState(null), progress = _progress[0], setProgress = _progress[1];
+  var _busq = useState(""), busq = _busq[0], setBusq = _busq[1];
+
+  var allSedes = useMemo(function() {
+    var s = {};
+    filteredData.marc.forEach(function(m){ if (m.DEPENDENCIA) s[m.DEPENDENCIA] = (s[m.DEPENDENCIA]||0)+1; });
+    filteredData.fact.forEach(function(f){ if (f.sede) s[f.sede] = s[f.sede]||0; });
+    return Object.keys(s).sort().map(function(sede){ return { sede:sede, marcCount:s[sede]||0 }; });
+  }, [filteredData]);
+
+  var sedesFilt = busq.trim() ? allSedes.filter(function(s){ return s.sede.toLowerCase().indexOf(busq.trim().toLowerCase())>=0; }) : allSedes;
+
+  useEffect(function() {
+    if (mode === "seleccionar" && !selSedes) {
+      var obj = {};
+      allSedes.forEach(function(s){ obj[s.sede] = true; });
+      setSelSedes(obj);
+    }
+  }, [mode, allSedes]);
+
+  var fecha = new Date().toISOString().slice(0,10);
+
+  function generarMemoriaSede(marc, fact, sedeName) {
+    var marcClean = limpiarMarc(marc);
+    return JSON.stringify({_type:"seguimiento_memory",_v:2,sede:sedeName,fecha:fecha,marcaciones:marcClean,facturas:fact}, null, 2);
+  }
+
+  function exportConsolidado() {
+    var marcClean = limpiarMarc(filteredData.marc);
+    var sedeName = masterFilter.sedes ? Object.keys(masterFilter.sedes).find(function(k){return masterFilter.sedes[k];}) || "" : "";
+    var jsonStr = JSON.stringify({_type:"seguimiento_memory",_v:2,marcaciones:marcClean,facturas:filteredData.fact}, null, 2);
+    var nombre = "seguimiento_consolidado_" + (sedeName ? sedeName.replace(/\s+/g,"_") + "_" : "") + fecha + ".json";
+    descargarArchivo(jsonStr, nombre, "application/json");
+    onClose();
+  }
+
+  function exportPorSede(sedesAExportar) {
+    setProgress({ current:0, total:sedesAExportar.length, sede:"" });
+    var idx = 0;
+    function next() {
+      if (idx >= sedesAExportar.length) { setProgress(null); onClose(); return; }
+      var sede = sedesAExportar[idx];
+      setProgress({ current:idx+1, total:sedesAExportar.length, sede:sede });
+      var marcSede = filteredData.marc.filter(function(m){ return m.DEPENDENCIA === sede; });
+      var factSede = filteredData.fact.filter(function(f){ return f.sede === sede; });
+      var jsonStr = generarMemoriaSede(marcSede, factSede, sede);
+      var nombre = "seguimiento_" + sede.replace(/\s+/g,"_") + "_" + fecha + ".json";
+      descargarArchivo(jsonStr, nombre, "application/json");
+      idx++;
+      setTimeout(next, 400);
+    }
+    setTimeout(next, 200);
+  }
+
+  function exportTodas() { exportPorSede(allSedes.map(function(s){ return s.sede; })); }
+
+  function exportSeleccionadas() {
+    var lista = selSedes ? Object.keys(selSedes).filter(function(k){ return selSedes[k]; }) : [];
+    if (lista.length === 0) { return; }
+    if (lista.length === 1) {
+      var sede = lista[0];
+      var marcSede = filteredData.marc.filter(function(m){ return m.DEPENDENCIA === sede; });
+      var factSede = filteredData.fact.filter(function(f){ return f.sede === sede; });
+      var jsonStr = generarMemoriaSede(marcSede, factSede, sede);
+      descargarArchivo(jsonStr, "seguimiento_" + sede.replace(/\s+/g,"_") + "_" + fecha + ".json", "application/json");
+      onClose();
+    } else {
+      exportPorSede(lista);
+    }
+  }
+
+  function toggleSede(sede) {
+    setSelSedes(function(prev) {
+      var n = Object.assign({}, prev);
+      n[sede] = !n[sede];
+      return n;
+    });
+  }
+
+  var selCount = selSedes ? Object.values(selSedes).filter(Boolean).length : 0;
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:9998,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
+      <div style={{background:C.sf,borderRadius:20,width:560,maxWidth:"95vw",maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 24px 60px rgba(0,0,0,0.3)",border:"1px solid "+C.bd,overflow:"hidden"}} onClick={function(e){e.stopPropagation();}}>
+
+        <div style={{background:"linear-gradient(135deg,#0f1f13,#1f6b2e)",padding:"18px 24px",flexShrink:0}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <div style={{color:"#e8f5eb",fontSize:16,fontWeight:800}}>Exportar Memoria Digital</div>
+              <div style={{color:"#7aab85",fontSize:11,marginTop:3}}>{filteredData.marc.length.toLocaleString()} marcaciones · {filteredData.fact.length.toLocaleString()} facturas · {allSedes.length} sedes</div>
+            </div>
+            <button onClick={onClose} style={{width:32,height:32,borderRadius:8,background:"rgba(255,255,255,0.1)",border:"none",color:"#e8f5eb",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+          </div>
+        </div>
+
+        {progress ? (
+          <div style={{padding:"40px 24px",textAlign:"center"}}>
+            <div style={{fontSize:14,fontWeight:700,color:C.t,marginBottom:8}}>Exportando sede {progress.current} de {progress.total}</div>
+            <div style={{fontSize:12,color:C.p,marginBottom:16,fontWeight:600}}>{progress.sede}</div>
+            <div style={{height:8,borderRadius:4,background:C.bd,overflow:"hidden",maxWidth:300,margin:"0 auto"}}>
+              <div style={{height:"100%",borderRadius:4,background:C.p,width:Math.round(progress.current/progress.total*100)+"%",transition:"width 0.3s"}} />
+            </div>
+            <div style={{fontSize:11,color:C.td,marginTop:8}}>No cierres esta ventana...</div>
+          </div>
+        ) : (
+          <div style={{flex:1,overflowY:"auto",padding:"20px 24px"}}>
+
+            <div style={{display:"flex",gap:8,marginBottom:20}}>
+              {[
+                {id:"consolidado", label:"Consolidado", icon:"📦", desc:"Un solo archivo con todo"},
+                {id:"todas", label:"Todas las sedes", icon:"🏪", desc:"Un archivo por cada sede"},
+                {id:"seleccionar", label:"Seleccionar", icon:"✅", desc:"Elige cuáles exportar"}
+              ].map(function(opt) {
+                var activo = mode === opt.id;
+                return (
+                  <button key={opt.id} onClick={function(){setMode(opt.id);}}
+                    style={{flex:1,padding:"14px 12px",borderRadius:12,border:"2px solid "+(activo?C.p:C.bd),
+                      background:activo?C.pg:"transparent",cursor:"pointer",textAlign:"center",transition:"all 0.15s"}}>
+                    <div style={{fontSize:20,marginBottom:6}}>{opt.icon}</div>
+                    <div style={{fontSize:12,fontWeight:activo?700:500,color:activo?C.p:C.t}}>{opt.label}</div>
+                    <div style={{fontSize:10,color:C.td,marginTop:3}}>{opt.desc}</div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {mode === "consolidado" && (
+              <div style={{padding:16,borderRadius:12,background:C.sa,border:"1px solid "+C.bd}}>
+                <div style={{fontSize:13,fontWeight:600,color:C.t,marginBottom:6}}>Exportar archivo consolidado</div>
+                <div style={{fontSize:11,color:C.td,marginBottom:4}}>Genera un solo archivo .json con todas las marcaciones y facturas filtradas actualmente.</div>
+                <div style={{fontSize:11,color:C.tm}}>Registros: <b>{filteredData.marc.length.toLocaleString()}</b> marcaciones · <b>{filteredData.fact.length.toLocaleString()}</b> facturas</div>
+                {masterFilter.sedes && <div style={{fontSize:11,color:C.p,marginTop:4,fontWeight:600}}>Filtro maestro activo: solo datos filtrados</div>}
+              </div>
+            )}
+
+            {mode === "todas" && (
+              <div style={{padding:16,borderRadius:12,background:C.sa,border:"1px solid "+C.bd}}>
+                <div style={{fontSize:13,fontWeight:600,color:C.t,marginBottom:6}}>Exportar todas las sedes por separado</div>
+                <div style={{fontSize:11,color:C.td,marginBottom:8}}>Genera <b>{allSedes.length}</b> archivos .json, uno por cada sede. Cada archivo contiene solo los datos de esa sede.</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  {allSedes.map(function(s) {
+                    return <span key={s.sede} style={{padding:"4px 10px",borderRadius:6,fontSize:10,background:C.pg,border:"1px solid "+C.bd,color:C.p,fontWeight:500}}>{s.sede} <span style={{color:C.td}}>({s.marcCount})</span></span>;
+                  })}
+                </div>
+              </div>
+            )}
+
+            {mode === "seleccionar" && (
+              <div>
+                <div style={{display:"flex",gap:8,marginBottom:10,alignItems:"center"}}>
+                  <input value={busq} onChange={function(e){setBusq(e.target.value);}} placeholder="Buscar sede..." style={{flex:1,padding:"8px 12px",borderRadius:8,fontSize:12,background:C.sa,border:"1px solid "+C.bd,color:C.t,outline:"none",boxSizing:"border-box"}} />
+                  <button onClick={function(){var obj={}; allSedes.forEach(function(s){obj[s.sede]=true;}); setSelSedes(obj);}} style={{padding:"6px 10px",borderRadius:6,fontSize:10,border:"1px solid "+C.bd,background:C.sa,color:C.tm,cursor:"pointer"}}>Todas</button>
+                  <button onClick={function(){var obj={}; allSedes.forEach(function(s){obj[s.sede]=false;}); setSelSedes(obj);}} style={{padding:"6px 10px",borderRadius:6,fontSize:10,border:"1px solid "+C.bd,background:C.sa,color:C.tm,cursor:"pointer"}}>Ninguna</button>
+                </div>
+                <div style={{fontSize:11,color:C.td,marginBottom:8}}>{selCount} sede{selCount!==1?"s":""} seleccionada{selCount!==1?"s":""}</div>
+                <div style={{maxHeight:220,overflowY:"auto",border:"1px solid "+C.bd,borderRadius:10,background:C.sf}}>
+                  {sedesFilt.map(function(s) {
+                    var on = selSedes && selSedes[s.sede];
+                    return (
+                      <div key={s.sede} onClick={function(){toggleSede(s.sede);}} style={{padding:"10px 14px",cursor:"pointer",borderBottom:"1px solid "+C.bd,display:"flex",justifyContent:"space-between",alignItems:"center",background:on?C.pg:"transparent",transition:"background 0.1s"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:10}}>
+                          <div style={{width:18,height:18,borderRadius:5,border:"2px solid "+(on?C.p:C.bd),background:on?C.p:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                            {on && <span style={{color:"#fff",fontSize:11,fontWeight:700}}>✓</span>}
+                          </div>
+                          <span style={{fontSize:12,fontWeight:on?600:400,color:on?C.p:C.t}}>{s.sede}</span>
+                        </div>
+                        <span style={{fontSize:10,color:C.td}}>{s.marcCount.toLocaleString()} reg</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {!progress && (
+          <div style={{padding:"14px 24px",borderTop:"1px solid "+C.bd,display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+            <button onClick={onClose} style={{padding:"8px 16px",borderRadius:8,fontSize:11,border:"1px solid "+C.bd,background:"transparent",color:C.tm,cursor:"pointer"}}>Cancelar</button>
+            <button onClick={function(){
+              if (mode==="consolidado") exportConsolidado();
+              else if (mode==="todas") exportTodas();
+              else exportSeleccionadas();
+            }} disabled={mode==="seleccionar"&&selCount===0}
+              style={{padding:"10px 24px",borderRadius:8,fontSize:13,fontWeight:700,
+                background:mode==="seleccionar"&&selCount===0?"#ccc":"linear-gradient(135deg,#1f6b2e,#3a9a50)",
+                border:"none",color:"#fff",cursor:mode==="seleccionar"&&selCount===0?"not-allowed":"pointer",
+                boxShadow:mode==="seleccionar"&&selCount===0?"none":"0 2px 8px rgba(31,107,46,0.3)"}}>
+              {mode==="consolidado" ? "⬇ Descargar consolidado" : mode==="todas" ? "⬇ Exportar "+allSedes.length+" archivos" : "⬇ Exportar "+selCount+" sede"+(selCount!==1?"s":"")}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function MasterFilterModal({ data, masterFilter, setMasterFilter, filteredData, onClose }) {
   var allSedes = {}, allMeses = {};
   data.marc.forEach(function(m) {
@@ -3120,6 +3320,7 @@ function App() {
   var _d = useState({marc:[],fact:[]}), data = _d[0], setData = _d[1];
   var _sb = useState(true), sidebar = _sb[0], setSB = _sb[1];
   var _em = useState(false), expM = _em[0], setExpM = _em[1];
+  var _exModal = useState(false), exportModalOpen = _exModal[0], setExportModalOpen = _exModal[1];
   var _lu = useState(""), lu = _lu[0], setLU = _lu[1];
   var _lp = useState(""), lp = _lp[0], setLP = _lp[1];
   var _le = useState(""), le = _le[0], setLE = _le[1];
@@ -3671,37 +3872,20 @@ function App() {
               <span style={{fontSize:12}}>⚙</span> Filtro Maestro
               {(masterFilter.sedes||masterFilter.meses||masterFilter.clases||masterFilter.secciones) && <span style={{width:6,height:6,borderRadius:"50%",background:C.p}} />}
             </button>}
-            {has && <div style={{position:"relative"}}>
-              <button onClick={function(){setExpM(!expM);}}
+            {has && <div style={{display:"flex",gap:6}}>
+              <button onClick={function(){setExportModalOpen(true);}}
                 style={{padding:"7px 14px",borderRadius:8,fontSize:12,fontWeight:600,
                   background:"linear-gradient(135deg,#1f6b2e,#2d8a41)",border:"none",
                   color:"#fff",cursor:"pointer",boxShadow:"0 2px 8px rgba(31,107,46,0.3)",
                   display:"flex",alignItems:"center",gap:6}}>
-                <span style={{fontSize:11}}>⬇</span> Exportar
+                <span style={{fontSize:11}}>💾</span> Exportar Memoria
               </button>
-              {expM && <div>
-                <div onClick={function(){setExpM(false);}} style={{position:"fixed",inset:0,zIndex:49}} />
-                <div style={{position:"absolute",top:"calc(100% + 6px)",right:0,zIndex:50,
-                  background:C.sf,border:"1px solid "+C.bd2,borderRadius:12,padding:6,
-                  minWidth:190,boxShadow:"0 8px 32px rgba(0,0,0,0.12),0 2px 8px rgba(0,0,0,0.08)"}}>
-                  <button onClick={function(){expMem();setExpM(false);}}
-                    style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"9px 12px",
-                      borderRadius:8,border:"none",cursor:"pointer",background:"transparent",
-                      color:C.t,fontSize:12,textAlign:"left",fontWeight:600,transition:"background 0.1s"}}
-                    onMouseEnter={function(e){e.currentTarget.style.background=C.sa;}}
-                    onMouseLeave={function(e){e.currentTarget.style.background="transparent";}}>
-                    <span>💾</span> Memoria Portable (.json)
-                  </button>
-                  <button onClick={function(){expXls();setExpM(false);}}
-                    style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"9px 12px",
-                      borderRadius:8,border:"none",cursor:"pointer",background:"transparent",
-                      color:C.t,fontSize:12,textAlign:"left",transition:"background 0.1s"}}
-                    onMouseEnter={function(e){e.currentTarget.style.background=C.sa;}}
-                    onMouseLeave={function(e){e.currentTarget.style.background="transparent";}}>
-                    <span>📊</span> Datos para Excel
-                  </button>
-                </div>
-              </div>}
+              <button onClick={function(){expXls();}}
+                style={{padding:"7px 12px",borderRadius:8,fontSize:11,fontWeight:500,
+                  background:C.sa,border:"1px solid "+C.bd,color:C.tm,cursor:"pointer",
+                  display:"flex",alignItems:"center",gap:5}}>
+                <span style={{fontSize:11}}>📊</span> Excel
+              </button>
             </div>}
             {has && <button
               onClick={function(){setConfirmReset(true);}}
@@ -3726,6 +3910,8 @@ function App() {
 
 
       {masterFilterOpen && <MasterFilterModal data={data} masterFilter={masterFilter} setMasterFilter={setMasterFilter} filteredData={filteredData} onClose={function(){setMasterFilterOpen(false);}} />}
+
+      {exportModalOpen && <ExportModal data={data} filteredData={filteredData} masterFilter={masterFilter} limpiarMarc={limpiarMarc} descargarArchivo={descargarArchivo} onClose={function(){setExportModalOpen(false);}} />}
 
 
       {confirmReset && (
