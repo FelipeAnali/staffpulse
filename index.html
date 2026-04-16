@@ -1540,8 +1540,8 @@ function PolView({ marc: marcaciones = [], parametros, setParametros }) {
       }
       } catch(chunkErr) { console.error("Error en processChunk:", chunkErr); if (!cancelled) { setCalculando(false); setResultado({ politicas: POLITICAS_DEF.map(p => ({...p, desc: p.descFn(parametros), violadores:[], empleadosAfectados:0, totalViolaciones:0, porcentaje:0, cumplimiento:100})), totalEmpleados: 0, error: "Error calculando politicas: " + chunkErr.message }); } }
     }
-    setTimeout(processChunk, 50);
-    return () => { cancelled = true; };
+    var t = setTimeout(processChunk, 50);
+    return () => { cancelled = true; clearTimeout(t); };
   }, [marcacionesFiltradas, parametros]);
 
   const { politicas, totalEmpleados, error: polError } = resultado;
@@ -2399,8 +2399,8 @@ function TendenciaView({ marc, parametros }) {
         if (!cancelled) { setTendencia({ series, hayPocosDatos:false }); setTendCalc(false); }
       }
     }
-    setTimeout(nextMes, 50);
-    return () => { cancelled = true; };
+    var t = setTimeout(nextMes, 50);
+    return () => { cancelled = true; clearTimeout(t); };
   }, [marc, sedeSel]);
 
   const polsOpts = ["Todas", ...POLITICAS_DEF.map(p=>p.id)];
