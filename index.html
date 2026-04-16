@@ -48,7 +48,12 @@ var C = {
   zebra:"rgba(31,107,46,0.03)",gridHi:"rgba(31,107,46,0.11)",btnTxt:"#fff"
 };
 
-var USERS={admin:{pw:"admin2026",role:"admin",name:"Administrador"},supervisor:{pw:"super2026",role:"supervisor",name:"Supervisor"},gerencia:{pw:"gerencia2026",role:"gerencia",name:"Gerencia"}};
+var USERS={admin:{pw:"6051fc84a7a0d74c225fb18a496b09952da5642e60723ecae543298edd7d82d6",role:"admin",name:"Administrador"},supervisor:{pw:"9a0ee89e00a006877eca0c28eebeb38aa301469b9cce8012b6ee04b13079a7e8",role:"supervisor",name:"Supervisor"},gerencia:{pw:"2f8f191656429c28ea6f334a5d8568aa0f62f64674b87dd26546368e09f7f756",role:"gerencia",name:"Gerencia"}};
+
+async function hashPw(pw) {
+  var buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pw));
+  return Array.from(new Uint8Array(buf)).map(function(b){ return b.toString(16).padStart(2,"0"); }).join("");
+}
 
 var HC=["0:00","4:00","5:00","6:00","7:00","8:00","9:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00","20:00","21:00","22:00","23:00"];
 var HL=["12am","4am","5am","6am","7am","8am","9am","10am","11am","12pm","1pm","2pm","3pm","4pm","5pm","6pm","7pm","8pm","9pm","10pm","11pm"];
@@ -3102,9 +3107,11 @@ function App() {
     });
   };
 
-  var login = function() {
+  var login = async function() {
     var u = USERS[lu.toLowerCase()];
-    if (u && u.pw === lp) { setUser({role:u.role,name:u.name}); setLE(""); }
+    if (!u) { setLE("Credenciales incorrectas"); return; }
+    var h = await hashPw(lp);
+    if (h === u.pw) { setUser({role:u.role,name:u.name}); setLE(""); }
     else setLE("Credenciales incorrectas");
   };
 
@@ -3376,7 +3383,7 @@ function App() {
             color:"#ecfdf0",cursor:"pointer",boxShadow:"0 4px 20px rgba(31,107,46,0.4)",letterSpacing:"0.2px",marginBottom:20}}>Ingresar →</button>
           <div style={{padding:"10px 14px",borderRadius:12,background:"rgba(255,255,255,0.02)",border:"1px solid rgba(74,222,128,0.07)"}}>
             <p style={{color:"rgba(107,127,112,0.8)",fontSize:10,margin:0,textAlign:"center",lineHeight:"1.8",fontWeight:500}}>
-              <span style={{color:"rgba(74,222,128,0.6)",fontWeight:700}}>Demo:</span> admin / admin2026 · supervisor / super2026 · gerencia / gerencia2026
+              <span style={{color:"rgba(74,222,128,0.6)",fontWeight:700}}>Acceso:</span> Ingrese sus credenciales asignadas
             </p>
           </div>
         </div>
