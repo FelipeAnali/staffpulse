@@ -193,6 +193,9 @@ function procBase(rows) {
 
       // SALIDA A BREAK / SALIDA A BREAK 1 / SALIDA A BREAK 2
       if (fn.startsWith("SALIDA A BREAK")) {
+        if (breakOutH !== null) {
+          breakPairs.push({ salidaH: breakOutH, llegadaH: null, duracionMin: 0, tipo: "BREAK_INCOMPLETO" });
+        }
         breakOutH = h;
       }
       
