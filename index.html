@@ -187,9 +187,9 @@ function procBase(rows) {
       const h = marc.hora;
       const fn = marc.funcion;
 
+      if (fn === "FALLIDA") continue;
       if (fn === "ENTRADA" && entrada === null) entrada = h;
       if (fn === "SALIDA") salida = h;
-      if (fn === "FALLIDA") continue;
 
       // SALIDA A BREAK / SALIDA A BREAK 1 / SALIDA A BREAK 2
       if (fn.startsWith("SALIDA A BREAK")) {
