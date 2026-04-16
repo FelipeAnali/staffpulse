@@ -26,26 +26,26 @@ const {
 /* Fuente moderna */
 const _fontLink = document.createElement("link");
 _fontLink.rel = "stylesheet";
-_fontLink.href = "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap";
+_fontLink.href = "https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap";
 document.head.appendChild(_fontLink);
 
 /* === THEME: SUPERTIENDAS CAÑAVERAL === */
 var C = {
   /* surfaces */
-  bg:"#f0f5f1",sf:"#ffffff",sa:"#f7fbf8",bd:"#daeade",bd2:"#c3d9c9",
+  bg:"#f3f7f4",sf:"#ffffff",sa:"#f8faf9",bd:"#e2ebe4",bd2:"#cdddd1",
   /* brand */
-  p:"#1f6b2e",pd:"#165022",pl:"#2d8a41",pg:"rgba(31,107,46,0.08)",ph:"rgba(31,107,46,0.14)",
+  p:"#1a7a2e",pd:"#145f22",pl:"#28a745",pg:"rgba(26,122,46,0.07)",ph:"rgba(26,122,46,0.12)",
   /* accent & states */
-  s:"#0284c7",ac:"#c47a0a",dg:"#dc2626",
+  s:"#0078d4",ac:"#d97706",dg:"#e11d48",
   /* text */
-  t:"#111a14",tm:"#344e3a",td:"#6b7f70",
+  t:"#0f1a12",tm:"#3a5440",td:"#7a9382",
   /* legacy compat */
-  w:"#111a14",bg2:"#4ade80",lg:"#166534",
+  w:"#0f1a12",bg2:"#34d399",lg:"#15803d",
   /* sidebar */
-  nav:"#060f08",navSf:"#0a1a0d",navBd:"rgba(74,222,128,0.08)",
-  navT:"#ecfdf0",navTm:"#7aab85",navAct:"#4ade80",
+  nav:"#071209",navSf:"#0c1e10",navBd:"rgba(52,211,153,0.06)",
+  navT:"#f0fdf4",navTm:"#86b394",navAct:"#34d399",
   /* util */
-  zebra:"rgba(31,107,46,0.03)",gridHi:"rgba(31,107,46,0.11)",btnTxt:"#fff"
+  zebra:"rgba(26,122,46,0.025)",gridHi:"rgba(26,122,46,0.10)",btnTxt:"#fff"
 };
 
 var USERS={admin:{pw:"6051fc84a7a0d74c225fb18a496b09952da5642e60723ecae543298edd7d82d6",role:"admin",name:"Administrador"},supervisor:{pw:"9a0ee89e00a006877eca0c28eebeb38aa301469b9cce8012b6ee04b13079a7e8",role:"supervisor",name:"Supervisor"},gerencia:{pw:"2f8f191656429c28ea6f334a5d8568aa0f62f64674b87dd26546368e09f7f756",role:"gerencia",name:"Gerencia"}};
@@ -3876,7 +3876,7 @@ function App() {
   /* === LOGIN === */
   if (!user) {
     return (
-      <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#04140a,#081c0e)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif",
+      <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#04140a,#081c0e)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans','Plus Jakarta Sans',system-ui,sans-serif",
         backgroundImage:"radial-gradient(ellipse at 30% 40%, rgba(31,107,46,0.2) 0%, transparent 55%), radial-gradient(ellipse at 75% 70%, rgba(74,222,128,0.07) 0%, transparent 50%)"}}>
         <div style={{width:400,padding:44,borderRadius:28,background:"rgba(8,22,12,0.98)",border:"1px solid rgba(74,222,128,0.13)",boxShadow:"0 40px 100px rgba(0,0,0,0.7),0 0 0 1px rgba(74,222,128,0.05)",backdropFilter:"blur(24px)"}}>
           <div style={{textAlign:"center",marginBottom:36}}>
@@ -4027,24 +4027,24 @@ function App() {
   var NAV_ICONS = {upload:"⬆",resumen:"📊",dashboard:"◼",eficiencia:"⚡",riesgo:"⚠",tendencia:"↗",policies:"📋",auditoria:"🔍",rules:"📖"};
 
   return (
-    <div style={{display:"flex",height:"100vh",overflow:"hidden",background:C.bg,fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif",
+    <div style={{display:"flex",height:"100vh",overflow:"hidden",background:C.bg,fontFamily:"'DM Sans','Plus Jakarta Sans',system-ui,sans-serif",
       backgroundImage:"radial-gradient(ellipse at 20% 50%, rgba(31,107,46,0.05) 0%, transparent 60%), radial-gradient(ellipse at 80% 20%, rgba(31,107,46,0.04) 0%, transparent 50%)"}}>
 
-      {/* ══ SIDEBAR MODERNO ══ */}
-      <div style={{width:sidebar?220:64,transition:"width 0.25s cubic-bezier(0.4,0,0.2,1)",
-        background:C.nav,borderRight:"1px solid "+C.navBd,
+      {/* ══ SIDEBAR ══ */}
+      <div style={{width:sidebar?240:68,transition:"width 0.3s cubic-bezier(0.4,0,0.2,1)",
+        background:"linear-gradient(180deg,"+C.nav+" 0%,#0a1f0e 100%)",borderRight:"1px solid "+C.navBd,
         display:"flex",flexDirection:"column",flexShrink:0,overflow:"hidden",height:"100vh",
-        boxShadow:"4px 0 24px rgba(0,0,0,0.3)"}}>
+        boxShadow:"4px 0 32px rgba(0,0,0,0.35)"}}>
 
         {/* Logo */}
-        <div style={{padding:sidebar?"18px 16px":"14px 0",borderBottom:"1px solid "+C.navBd,
-          display:"flex",alignItems:"center",gap:12,flexShrink:0,justifyContent:sidebar?"flex-start":"center",
+        <div style={{padding:sidebar?"20px 18px":"16px 0",borderBottom:"1px solid "+C.navBd,
+          display:"flex",alignItems:"center",gap:14,flexShrink:0,justifyContent:sidebar?"flex-start":"center",
           cursor:"pointer"}} onClick={function(){setSB(!sidebar);}}>
-          <div style={{width:36,height:36,borderRadius:10,flexShrink:0,
-            background:"linear-gradient(135deg,#1a5228,#2d8a41)",
+          <div style={{width:38,height:38,borderRadius:11,flexShrink:0,
+            background:"linear-gradient(135deg,#1a7a2e,#34d399)",
             display:"flex",alignItems:"center",justifyContent:"center",
-            fontSize:12,fontWeight:800,color:"#4ade80",letterSpacing:"-0.5px",
-            boxShadow:"0 2px 12px rgba(74,222,128,0.25),inset 0 1px 0 rgba(255,255,255,0.1)"}}>SC</div>
+            fontSize:13,fontWeight:800,color:"#fff",letterSpacing:"-0.5px",fontFamily:"'DM Sans',sans-serif",
+            boxShadow:"0 4px 16px rgba(52,211,153,0.3),inset 0 1px 0 rgba(255,255,255,0.15)"}}>SC</div>
           {sidebar && (
             <div style={{minWidth:0}}>
               <div style={{color:C.navT,fontSize:14,fontWeight:800,letterSpacing:"-0.3px",lineHeight:1.1}}>Seguimiento</div>
@@ -4054,24 +4054,24 @@ function App() {
         </div>
 
         {/* Nav items */}
-        <nav style={{flex:1,padding:"10px 8px",overflowY:"auto",overflowX:"hidden"}}>
+        <nav style={{flex:1,padding:"12px 10px",overflowY:"auto",overflowX:"hidden"}}>
           {nav.map(function(n){
             var act = view === n.id;
             return (
               <button key={n.id} onClick={function(){setView(n.id);}}
-                style={{display:"flex",width:"100%",alignItems:"center",gap:10,
-                  padding:sidebar?"10px 12px":"10px 0",marginBottom:2,
-                  borderRadius:10,border:"none",cursor:"pointer",
+                style={{display:"flex",width:"100%",alignItems:"center",gap:12,
+                  padding:sidebar?"11px 14px":"11px 0",marginBottom:3,
+                  borderRadius:11,border:"none",cursor:"pointer",
                   justifyContent:sidebar?"flex-start":"center",
-                  background:act?"linear-gradient(135deg,rgba(74,222,128,0.15),rgba(74,222,128,0.08))":"transparent",
-                  color:act?"#4ade80":C.navTm,
-                  boxShadow:act?"inset 0 0 0 1px rgba(74,222,128,0.2)":"none",
-                  transition:"all 0.15s ease"}}>
-                <span style={{fontSize:14,flexShrink:0,opacity:act?1:0.7,
-                  filter:act?"none":"grayscale(0.3)"}}>{NAV_ICONS[n.id]||"·"}</span>
-                {sidebar && <span style={{fontSize:12,fontWeight:act?700:500,letterSpacing:"0.1px",
+                  background:act?"linear-gradient(135deg,rgba(52,211,153,0.14),rgba(52,211,153,0.06))":"transparent",
+                  color:act?C.navAct:C.navTm,
+                  boxShadow:act?"inset 0 0 0 1px rgba(52,211,153,0.18)":"none",
+                  transition:"all 0.2s ease",fontFamily:"'DM Sans','Plus Jakarta Sans',sans-serif"}}>
+                <span style={{fontSize:15,flexShrink:0,opacity:act?1:0.6,
+                  filter:act?"none":"grayscale(0.4)",transition:"all 0.2s"}}>{NAV_ICONS[n.id]||"·"}</span>
+                {sidebar && <span style={{fontSize:13,fontWeight:act?700:500,letterSpacing:"-0.1px",
                   whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{n.label}</span>}
-                {act && sidebar && <span style={{marginLeft:"auto",width:6,height:6,borderRadius:"50%",background:"#4ade80",flexShrink:0}} />}
+                {act && sidebar && <span style={{marginLeft:"auto",width:7,height:7,borderRadius:"50%",background:C.navAct,flexShrink:0,boxShadow:"0 0 8px rgba(52,211,153,0.5)"}} />}
               </button>
             );
           })}
@@ -4114,22 +4114,22 @@ function App() {
       <div style={{flex:1,overflowY:"auto",overflowX:"hidden",display:"flex",flexDirection:"column"}}>
 
         {/* Topbar */}
-        <div style={{padding:"0 24px",height:56,background:"rgba(255,255,255,0.85)",
-          backdropFilter:"blur(12px)",borderBottom:"1px solid "+C.bd2,
+        <div style={{padding:"0 28px",height:60,background:"rgba(255,255,255,0.88)",
+          backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",borderBottom:"1px solid "+C.bd,
           display:"flex",justifyContent:"space-between",alignItems:"center",
           position:"sticky",top:0,zIndex:10,flexShrink:0,
-          boxShadow:"0 1px 0 rgba(31,107,46,0.06)"}}>
+          boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
           {/* Breadcrumb */}
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontSize:16,opacity:0.7}}>{NAV_ICONS[view]||"·"}</span>
-            <span style={{color:C.td,fontSize:12,fontWeight:500}}>Cañaveral</span>
-            <span style={{color:C.bd2,fontSize:12}}>›</span>
-            <span style={{color:C.t,fontSize:13,fontWeight:700,letterSpacing:"-0.2px"}}>{(nav.find(function(n){return n.id===view;})||{label:""}).label}</span>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:17,opacity:0.75}}>{NAV_ICONS[view]||"·"}</span>
+            <span style={{color:C.td,fontSize:12,fontWeight:500,fontFamily:"'DM Sans',sans-serif"}}>Cañaveral</span>
+            <span style={{color:C.bd2,fontSize:11}}>›</span>
+            <span style={{color:C.t,fontSize:14,fontWeight:700,letterSpacing:"-0.3px",fontFamily:"'DM Sans',sans-serif"}}>{(nav.find(function(n){return n.id===view;})||{label:""}).label}</span>
           </div>
           {/* Acciones */}
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            {has && <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:20,
-              background:"rgba(31,107,46,0.07)",border:"1px solid "+C.bd}}>
+            {has && <div style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",borderRadius:20,
+              background:"rgba(26,122,46,0.06)",border:"1px solid "+C.bd}}>
               <span style={{width:6,height:6,borderRadius:"50%",background:"#4ade80",flexShrink:0,
                 boxShadow:"0 0 6px rgba(74,222,128,0.6)"}} />
               <span style={{fontSize:11,color:C.tm,fontWeight:500}}>{filteredData.marc.length.toLocaleString()} registros</span>
@@ -4169,10 +4169,10 @@ function App() {
         </div>
 
         {/* Contenido */}
-        <div style={{flex:1,padding:"24px"}}>
-          <div style={{background:C.sf,borderRadius:20,padding:28,
-            minHeight:"calc(100vh - 128px)",
-            boxShadow:"0 1px 3px rgba(0,0,0,0.04),0 4px 24px rgba(31,107,46,0.06)",
+        <div style={{flex:1,padding:"24px 28px"}}>
+          <div style={{background:C.sf,borderRadius:22,padding:30,
+            minHeight:"calc(100vh - 132px)",
+            boxShadow:"0 1px 2px rgba(0,0,0,0.03),0 8px 32px rgba(26,122,46,0.05)",
             border:"1px solid "+C.bd}}>
             {content}
           </div>
@@ -4207,7 +4207,7 @@ class ErrorBoundary extends React.Component {
   componentDidCatch(error, info) { console.error("ErrorBoundary:", error, info); }
   render() {
     if (this.state.hasError) {
-      return React.createElement("div", {style:{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f0f5f1",fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif"}},
+      return React.createElement("div", {style:{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f0f5f1",fontFamily:"'DM Sans','Plus Jakarta Sans',system-ui,sans-serif"}},
         React.createElement("div", {style:{padding:40,borderRadius:20,background:"#fff",border:"1px solid #daeade",maxWidth:500,textAlign:"center",boxShadow:"0 4px 24px rgba(31,107,46,0.1)"}},
           React.createElement("div", {style:{fontSize:40,marginBottom:16}}, "⚠️"),
           React.createElement("h2", {style:{color:"#111a14",fontSize:18,fontWeight:700,margin:"0 0 8px"}}, "Algo salió mal"),
