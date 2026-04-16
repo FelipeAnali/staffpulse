@@ -859,26 +859,43 @@ function ResumenView({ marc, fact, parametros }) {
     // Venta total
     const ventaTotal = fact.reduce((s,f) => s+(f.venta||0), 0);
 
-    // Políticas por sede
-    const sedesCriticas = [];
-    const sedesOk = [];
-    Object.keys(sedesMap).forEach(sede => {
-      const marcSede = marc.filter(m => m.DEPENDENCIA === sede);
-      const result = evaluarPoliticas(marcSede, parametros, "Todas");
-      const promCumpl = result.politicas.length > 0 ? Math.round(result.politicas.reduce((s,p) => s+p.cumplimiento, 0) / result.politicas.length) : 100;
-      const polsRojas = result.politicas.filter(p => p.cumplimiento < 70).length;
-      const obj = { sede:sede, cumplimiento:promCumpl, empleados:result.totalEmpleados, polsRojas:polsRojas, registros:sedesMap[sede] };
-      if (promCumpl < 70) sedesCriticas.push(obj);
-      else sedesOk.push(obj);
-    });
-    sedesCriticas.sort((a,b) => a.cumplimiento - b.cumplimiento);
-    sedesOk.sort((a,b) => a.cumplimiento - b.cumplimiento);
-
-    // Políticas globales
+    // Políticas globales (UNA sola llamada para todo)
     const globalResult = evaluarPoliticas(marc, parametros, "Todas");
     const promGlobal = globalResult.politicas.length > 0 ? Math.round(globalResult.politicas.reduce((s,p) => s+p.cumplimiento, 0) / globalResult.politicas.length) : 100;
     const polsEnRojo = globalResult.politicas.filter(p => p.cumplimiento < 70);
     const polsEnAmarillo = globalResult.politicas.filter(p => p.cumplimiento >= 70 && p.cumplimiento < 90);
+
+    // Per-sede cumplimiento derivado del resultado global (sin recalcular)
+    const empPorSede = {};
+    marc.forEach(m => {
+      if (m.DEPENDENCIA && m.IDENTIFICACION) {
+        if (!empPorSede[m.DEPENDENCIA]) empPorSede[m.DEPENDENCIA] = {};
+        empPorSede[m.DEPENDENCIA][m.IDENTIFICACION] = 1;
+      }
+    });
+    const violPorSede = {};
+    globalResult.politicas.forEach(pol => {
+      pol.violadores.forEach(v => {
+        if (v.sede) {
+          if (!violPorSede[v.sede]) violPorSede[v.sede] = {};
+          violPorSede[v.sede][v.id] = (violPorSede[v.sede][v.id]||0) + 1;
+        }
+      });
+    });
+
+    const sedesCriticas = [];
+    const sedesOk = [];
+    Object.keys(sedesMap).forEach(sede => {
+      const empCount = empPorSede[sede] ? Object.keys(empPorSede[sede]).length : 0;
+      const violCount = violPorSede[sede] ? Object.keys(violPorSede[sede]).length : 0;
+      const cumpl = empCount > 0 ? Math.round((1 - violCount / empCount) * 100) : 100;
+      const polsRojas = cumpl < 70 ? 1 : 0;
+      const obj = { sede:sede, cumplimiento:cumpl, empleados:empCount, polsRojas:polsRojas, registros:sedesMap[sede] };
+      if (cumpl < 70) sedesCriticas.push(obj);
+      else sedesOk.push(obj);
+    });
+    sedesCriticas.sort((a,b) => a.cumplimiento - b.cumplimiento);
+    sedesOk.sort((a,b) => a.cumplimiento - b.cumplimiento);
 
     // Top empleados infractores
     const empInfMap = {};
@@ -2352,16 +2369,28 @@ function EficienciaView({ marc, fact }) {
   }, [marcFilt, factFilt]);
 
   const rankingSedes = useMemo(() => {
+    // Group data by sede in one pass instead of filtering per sede
+    const bySedeMarc = {}, bySedeFact = {};
+    marcFilt.forEach(m => {
+      var s = m.DEPENDENCIA; if (!s) return;
+      if (!bySedeMarc[s]) bySedeMarc[s] = [];
+      bySedeMarc[s].push(m);
+    });
+    factFilt.forEach(f => {
+      var s = f.sede; if (!s) return;
+      if (!bySedeFact[s]) bySedeFact[s] = [];
+      bySedeFact[s].push(f);
+    });
     return optsEfi.sedes.filter(s=>s!=="Todas").map(s => {
-      const fm = marcFilt.filter(m => m.DEPENDENCIA===s);
-      const ff = factFilt.filter(fx => fx.sede===s);
-      const fechas={}; fm.forEach(m=>{fechas[m.FECHA]=1;});
-      const nd = Math.max(Object.keys(fechas).length,1);
-      const totalPersonal = fm.reduce((sum,m) => { let p=0; HC.forEach(hc=>{p+=(m[hc]||0);}); return sum+p; },0)/nd;
-      const diasF={}; ff.forEach(fx=>{diasF[fx.dia+"_"+fx.mes]=1;});
-      const ndf = Math.max(Object.keys(diasF).length,1);
-      const ventas = ff.reduce((s,fx)=>s+(fx.nfact||0),0)/ndf;
-      const ef = totalPersonal>0 ? Math.round((ventas/totalPersonal)*10)/10 : 0;
+      var fm = bySedeMarc[s] || [];
+      var ff = bySedeFact[s] || [];
+      var fechas={}; fm.forEach(m=>{fechas[m.FECHA]=1;});
+      var nd = Math.max(Object.keys(fechas).length,1);
+      var totalPersonal = fm.reduce((sum,m) => { var p=0; HC.forEach(hc=>{p+=(m[hc]||0);}); return sum+p; },0)/nd;
+      var diasF={}; ff.forEach(fx=>{diasF[fx.dia+"_"+fx.mes]=1;});
+      var ndf = Math.max(Object.keys(diasF).length,1);
+      var ventas = ff.reduce((sum,fx)=>sum+(fx.nfact||0),0)/ndf;
+      var ef = totalPersonal>0 ? Math.round((ventas/totalPersonal)*10)/10 : 0;
       return { sede:s, personal:Math.round(totalPersonal), ventas:Math.round(ventas), eficiencia:ef };
     }).sort((a,b) => b.eficiencia-a.eficiencia);
   }, [marcFilt, factFilt, optsEfi.sedes]);
@@ -3597,7 +3626,11 @@ function App() {
   var SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutos
 
   useEffect(function() {
+    var lastReset = 0;
     function resetTimer() {
+      var now = Date.now();
+      if (now - lastReset < 60000) return; // throttle: max 1 reset per minute
+      lastReset = now;
       if (sessionTimer.current) clearTimeout(sessionTimer.current);
       if (user) {
         sessionTimer.current = setTimeout(function() {
@@ -3609,7 +3642,7 @@ function App() {
         }, SESSION_TIMEOUT);
       }
     }
-    var events = ["click","keydown","mousemove","touchstart","scroll"];
+    var events = ["click","keydown","touchstart"];
     events.forEach(function(ev){ window.addEventListener(ev, resetTimer); });
     resetTimer();
     return function() {
