@@ -714,15 +714,17 @@ function PillItem({ o, isSelected, onClick }) {
       onMouseLeave={function(){setHov(false);}}
       style={{
         display:"flex", alignItems:"center", justifyContent:"space-between",
-        width:"100%", textAlign:"left", padding:"8px 12px",
-        borderRadius:6, fontSize:11, border:"none", cursor:"pointer",
-        background: isSelected ? C.pg : hov ? C.sa : "transparent",
+        width:"100%", textAlign:"left", padding:"9px 14px",
+        borderRadius:8, fontSize:12, border:"none", cursor:"pointer",
+        background: isSelected ? "linear-gradient(135deg,rgba(26,122,46,0.1),rgba(26,122,46,0.05))" : hov ? C.sa : "transparent",
         color: isSelected ? C.p : hov ? C.t : C.tm,
         fontWeight: isSelected ? 700 : 400,
-        transition:"background 0.1s, color 0.1s",
+        fontFamily:"'DM Sans','Plus Jakarta Sans',sans-serif",
+        transition:"all 0.15s ease",
+        borderLeft: isSelected ? "3px solid "+C.p : "3px solid transparent",
       }}>
       <span>{o}</span>
-      {isSelected && <span style={{fontSize:10, color:C.p, fontWeight:700}}>✓</span>}
+      {isSelected && <span style={{fontSize:11, color:C.p, fontWeight:800}}>✓</span>}
     </button>
   );
 }
@@ -755,30 +757,31 @@ function Pill(props) {
   return (
     <div ref={ref} style={{position:"relative"}}>
       <button ref={btnRef} onClick={handleOpen} style={{
-        padding:"6px 10px", borderRadius:8, fontSize:11, fontWeight:500,
-        background: open ? (act ? C.p : C.bd) : (act ? C.pg : C.sa),
-        border:"1px solid "+(act ? C.p : C.bd),
+        padding:"7px 12px", borderRadius:10, fontSize:12, fontWeight:500,
+        background: open ? (act ? C.p : C.sf) : (act ? C.pg : C.sf),
+        border:"1.5px solid "+(open ? C.p : act ? C.p : C.bd),
         color: open ? (act ? "#fff" : C.t) : (act ? C.p : C.tm),
-        cursor:"pointer", display:"flex", alignItems:"center", gap:5,
-        whiteSpace:"nowrap", transition:"all 0.15s",
-        boxShadow: open ? "0 2px 8px rgba(31,107,46,0.15)" : "none",
+        cursor:"pointer", display:"flex", alignItems:"center", gap:6,
+        whiteSpace:"nowrap", transition:"all 0.2s ease",
+        fontFamily:"'DM Sans','Plus Jakarta Sans',sans-serif",
+        boxShadow: open ? "0 4px 12px rgba(26,122,46,0.18)" : "0 1px 2px rgba(0,0,0,0.04)",
       }}>
-        <span style={{opacity:0.65, fontSize:10, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.3px"}}>{label}</span>
-        <span style={{width:1, height:10, background:"currentColor", opacity:0.2}} />
-        <span style={{fontWeight:700, maxWidth:100, overflow:"hidden", textOverflow:"ellipsis"}}>{value}</span>
-        <span style={{fontSize:8, opacity:0.6, marginLeft:1}}>{open ? "▲" : "▼"}</span>
+        <span style={{opacity:0.55, fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.5px"}}>{label}</span>
+        <span style={{width:1, height:12, background:"currentColor", opacity:0.15, borderRadius:1}} />
+        <span style={{fontWeight:700, maxWidth:120, overflow:"hidden", textOverflow:"ellipsis"}}>{value}</span>
+        <svg width="10" height="10" viewBox="0 0 10 10" style={{opacity:0.5,transition:"transform 0.2s",transform:open?"rotate(180deg)":"rotate(0deg)"}}><path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/></svg>
       </button>
       {open && (
         <div style={{
           position:"fixed", top:dropPos.top, left:dropPos.left,
-          background:C.sf, border:"1px solid "+C.bd, borderRadius:10, padding:4,
-          minWidth:190, maxHeight:240, overflowY:"auto",
-          boxShadow:"0 12px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(31,107,46,0.08)",
-          zIndex:9999,
+          background:C.sf, border:"1px solid "+C.bd, borderRadius:14, padding:6,
+          minWidth:210, maxHeight:280, overflowY:"auto",
+          boxShadow:"0 16px 48px rgba(0,0,0,0.14), 0 2px 8px rgba(0,0,0,0.06)",
+          zIndex:9999, backdropFilter:"blur(8px)",
         }}>
           {/* Header del dropdown */}
-          <div style={{padding:"6px 12px 4px", borderBottom:"1px solid "+C.bd, marginBottom:3}}>
-            <span style={{fontSize:9, fontWeight:700, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px"}}>{label}</span>
+          <div style={{padding:"8px 14px 6px", borderBottom:"1px solid "+C.bd, marginBottom:4}}>
+            <span style={{fontSize:10, fontWeight:700, color:C.td, textTransform:"uppercase", letterSpacing:"0.8px"}}>{label}</span>
           </div>
           {options.map(function(o) {
             return <PillItem key={o} o={o} isSelected={o===value} onClick={function(){onChange(o);setOpen(false);}} />;
@@ -792,13 +795,13 @@ function Pill(props) {
 function Tip(props) {
   if (!props.active || !props.payload || !props.payload.length) return null;
   return (
-    <div style={{background:"rgba(10,15,26,0.95)",border:"1px solid "+C.bd,borderRadius:9,padding:"9px 13px"}}>
-      <p style={{color:"#f0f5f1",fontWeight:600,fontSize:12,margin:"0 0 5px"}}>{props.label}</p>
+    <div style={{background:"rgba(8,18,10,0.94)",border:"1px solid rgba(52,211,153,0.15)",borderRadius:12,padding:"11px 15px",boxShadow:"0 8px 24px rgba(0,0,0,0.3)",backdropFilter:"blur(8px)"}}>
+      <p style={{color:"#f0fdf4",fontWeight:700,fontSize:13,margin:"0 0 6px",fontFamily:"'DM Sans',sans-serif"}}>{props.label}</p>
       {props.payload.map(function(p,i) {
-        return <div key={i} style={{display:"flex",alignItems:"center",gap:5,marginBottom:2}}>
-          <div style={{width:7,height:7,borderRadius:2,background:p.color}} />
-          <span style={{color:"#a3b8aa",fontSize:10}}>{p.name}:</span>
-          <span style={{color:"#ffffff",fontSize:11,fontWeight:600}}>{typeof p.value === "number" ? p.value.toLocaleString() : p.value}</span>
+        return <div key={i} style={{display:"flex",alignItems:"center",gap:7,marginBottom:3}}>
+          <div style={{width:8,height:8,borderRadius:3,background:p.color,boxShadow:"0 0 4px "+p.color+"66"}} />
+          <span style={{color:"#86b394",fontSize:11}}>{p.name}:</span>
+          <span style={{color:"#ffffff",fontSize:12,fontWeight:700,fontFamily:"'DM Sans',sans-serif"}}>{typeof p.value === "number" ? p.value.toLocaleString() : p.value}</span>
         </div>;
       })}
     </div>
@@ -1182,7 +1185,7 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
 
   const botonVista = (modo, texto) => {
     const activo = vistaActual === modo;
-    return <button key={modo} onClick={() => setVistaActual(modo)} style={{padding:"6px 14px",borderRadius:7,fontSize:11,fontWeight:activo?600:400,background:activo?C.pg:"transparent",border:"1px solid "+(activo?C.p:C.bd),color:activo?C.p:C.tm,cursor:"pointer"}}>{texto}</button>;
+    return <button key={modo} onClick={() => setVistaActual(modo)} style={{padding:"7px 16px",borderRadius:9,fontSize:12,fontWeight:activo?700:500,background:activo?C.p:"transparent",border:"1.5px solid "+(activo?C.p:C.bd),color:activo?"#fff":C.tm,cursor:"pointer",transition:"all 0.2s",fontFamily:"'DM Sans',sans-serif",boxShadow:activo?"0 2px 8px rgba(26,122,46,0.2)":"none"}}>{texto}</button>;
   };
 
   const subtituloDatos = hasMarc && hasFact
@@ -1200,22 +1203,22 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
   return (
     <div>
       {/* Header + Toggle de vista */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
         <div>
-          <h2 style={{color:C.w,fontSize:18,fontWeight:700,margin:0}}>{tituloHeader}</h2>
-          <p style={{color:C.td,fontSize:11,margin:"3px 0 0"}}>{subtituloDatos}</p>
+          <h2 style={{color:C.t,fontSize:20,fontWeight:800,margin:0,fontFamily:"'DM Sans',sans-serif",letterSpacing:"-0.3px"}}>{tituloHeader}</h2>
+          <p style={{color:C.td,fontSize:12,margin:"4px 0 0"}}>{subtituloDatos}</p>
         </div>
-        <div style={{display:"flex",gap:4,alignItems:"center"}}>
+        <div style={{display:"flex",gap:5,alignItems:"center"}}>
           {botonVista("grafico", "Grafico")}
           {botonVista("tabla", "Tabla")}
           {botonVista("ambos", "Ambos")}
-          <button onClick={limpiarTodo} style={{padding:"6px 10px",borderRadius:7,fontSize:10,background:C.sa,border:"1px solid "+C.bd,color:C.tm,cursor:"pointer",marginLeft:6}}>Limpiar</button>
+          <button onClick={limpiarTodo} style={{padding:"7px 12px",borderRadius:9,fontSize:11,background:"transparent",border:"1.5px solid "+C.bd,color:C.td,cursor:"pointer",marginLeft:8,fontFamily:"'DM Sans',sans-serif",transition:"all 0.2s"}}>Limpiar</button>
         </div>
       </div>
 
       {/* Filtros */}
       {filtrosVisibles.length > 0 && (
-        <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:16,padding:10,borderRadius:10,background:"rgba(255,255,255,0.85)",border:"1px solid "+C.bd}}>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:18,padding:"10px 14px",borderRadius:14,background:C.sf,border:"1px solid "+C.bd,boxShadow:"0 1px 4px rgba(0,0,0,0.03)"}}>
           {filtrosVisibles.map((fp) => (
             <Pill key={fp.key} label={fp.label} value={filtros[fp.key]} options={fp.opts} onChange={(v) => aplicarFiltro(fp.key, v)} />
           ))}
@@ -1223,20 +1226,22 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
       )}
 
       {/* Tarjetas */}
-      <div style={{display:"flex",flexWrap:"wrap",gap:10,marginBottom:16}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(155px,1fr))",gap:12,marginBottom:18}}>
         {tarjetasStats.map((s, i) => (
-          <div key={i} style={{padding:16,borderRadius:12,background:C.sf,border:"1px solid "+C.bd,flex:"1 1 140px",position:"relative",overflow:"hidden",boxShadow:"0 1px 4px rgba(31,107,46,0.07)"}}>
-            <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:s.c,borderRadius:"12px 12px 0 0"}} />
-            <div style={{color:C.td,fontSize:10,fontWeight:600,marginBottom:6,marginTop:4,textTransform:"uppercase",letterSpacing:"0.4px"}}>{s.l}</div>
-            <div style={{fontSize:26,fontWeight:800,color:s.c,lineHeight:1}}>{s.v}</div>
+          <div key={i} style={{padding:"18px 16px",borderRadius:14,background:C.sf,border:"1px solid "+C.bd,position:"relative",overflow:"hidden",boxShadow:"0 2px 8px rgba(0,0,0,0.04)",transition:"box-shadow 0.2s,transform 0.2s"}}
+            onMouseEnter={function(e){e.currentTarget.style.boxShadow="0 4px 16px rgba(0,0,0,0.08)";e.currentTarget.style.transform="translateY(-1px)";}}
+            onMouseLeave={function(e){e.currentTarget.style.boxShadow="0 2px 8px rgba(0,0,0,0.04)";e.currentTarget.style.transform="translateY(0)";}}>
+            <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:"linear-gradient(90deg,"+s.c+","+s.c+"88)"}} />
+            <div style={{color:C.td,fontSize:10,fontWeight:600,marginBottom:8,marginTop:2,textTransform:"uppercase",letterSpacing:"0.5px",fontFamily:"'DM Sans',sans-serif"}}>{s.l}</div>
+            <div style={{fontSize:28,fontWeight:800,color:s.c,lineHeight:1,fontFamily:"'DM Sans',sans-serif"}}>{s.v}</div>
           </div>
         ))}
       </div>
 
       {/* Grafico */}
       {mostrarGrafico && (
-        <div style={{padding:20,borderRadius:16,background:C.sf,border:"1px solid "+C.bd,marginBottom:mostrarTabla?16:0,boxShadow:"0 1px 4px rgba(31,107,46,0.07)"}}>
-          <h3 style={{color:C.w,fontSize:12,fontWeight:600,margin:"0 0 14px"}}>{tituloGrafico}</h3>
+        <div style={{padding:"22px 24px",borderRadius:18,background:C.sf,border:"1px solid "+C.bd,marginBottom:mostrarTabla?18:0,boxShadow:"0 2px 12px rgba(0,0,0,0.04)"}}>
+          <h3 style={{color:C.t,fontSize:13,fontWeight:700,margin:"0 0 16px",fontFamily:"'DM Sans',sans-serif",letterSpacing:"-0.2px"}}>{tituloGrafico}</h3>
           <ResponsiveContainer width="100%" height={340}>
             <ComposedChart data={datosGrafico} margin={{top:10,right:25,left:0,bottom:10}}>
               <CartesianGrid strokeDasharray="3 3" stroke={C.bd} />
@@ -1255,20 +1260,20 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
 
       {/* Tabla */}
       {mostrarTabla && hasMarc && (
-        <div style={{padding:20,borderRadius:16,background:C.sf,border:"1px solid "+C.bd,overflowX:"auto",boxShadow:"0 1px 4px rgba(31,107,46,0.07)"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
-            <h3 style={{color:C.w,fontSize:12,fontWeight:600,margin:0}}>Tabla de Marcaciones ({marcacionesFiltradas.length} registros)</h3>
+        <div style={{padding:"22px 24px",borderRadius:18,background:C.sf,border:"1px solid "+C.bd,overflowX:"auto",boxShadow:"0 2px 12px rgba(0,0,0,0.04)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
+            <h3 style={{color:C.t,fontSize:14,fontWeight:700,margin:0,fontFamily:"'DM Sans',sans-serif"}}>Tabla de Marcaciones <span style={{color:C.td,fontWeight:500,fontSize:12}}>({marcacionesFiltradas.length} registros)</span></h3>
             <input
               value={busqueda}
               onChange={(e) => { setBusqueda(e.target.value); setPagina(0); }}
               placeholder="Buscar empleado, sede, seccion..."
-              style={{padding:"7px 12px",borderRadius:8,fontSize:12,background:C.sa,border:"1px solid "+C.bd,color:C.t,outline:"none",width:260,boxSizing:"border-box"}}
+              style={{padding:"9px 14px",borderRadius:10,fontSize:12,background:C.sa,border:"1.5px solid "+C.bd,color:C.t,outline:"none",width:280,boxSizing:"border-box",fontFamily:"'DM Sans',sans-serif",transition:"border-color 0.2s"}}
             />
           </div>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:10}}>
             <thead><tr>
               {columnasTabla.map((h) => (
-                <th key={h} style={{padding:"7px 5px",textAlign:"left",color:C.tm,fontWeight:700,borderBottom:"2px solid "+C.bd,whiteSpace:"nowrap",position:"sticky",top:0,background:"#f8fcf9",fontSize:9,textTransform:"uppercase",letterSpacing:"0.4px"}}>{h}</th>
+                <th key={h} style={{padding:"8px 6px",textAlign:"left",color:C.td,fontWeight:700,borderBottom:"2px solid "+C.p+"22",whiteSpace:"nowrap",position:"sticky",top:0,background:C.sa,fontSize:10,textTransform:"uppercase",letterSpacing:"0.5px",fontFamily:"'DM Sans',sans-serif"}}>{h}</th>
               ))}
             </tr></thead>
             <tbody>
