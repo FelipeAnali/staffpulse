@@ -3149,8 +3149,22 @@ function App() {
             var text = await file.text();
             var json = JSON.parse(text);
             if (json._type === "seguimiento_memory" || json._type === "staffpulse_memory") {
-              // Normalizar sedes al cargar desde memoria
-              var marcNorm = (json.marcaciones||[]).map(function(m){ var c=Object.assign({},m); if(c.DEPENDENCIA) c.DEPENDENCIA=normSede(c.DEPENDENCIA); return c; });
+              // Normalizar sedes y reconstruir BREAK_PAIRS al cargar desde memoria
+              var marcNorm = (json.marcaciones||[]).map(function(m){ var c=Object.assign({},m); if(c.DEPENDENCIA) c.DEPENDENCIA=normSede(c.DEPENDENCIA);
+                if (!c.BREAK_PAIRS && c.BREAK_DETALLE) {
+                  c.BREAK_PAIRS = c.BREAK_DETALLE.split(" | ").map(function(seg) {
+                    var match = seg.match(/(\d+):(\d+)-(\d+):(\d+)\s*\((\d+)min\s*(.*?)\)/);
+                    if (!match) return null;
+                    var sH = parseInt(match[1]) + parseInt(match[2])/60;
+                    var lH = parseInt(match[3]) + parseInt(match[4])/60;
+                    var dur = parseInt(match[5]);
+                    var tipoStr = match[6].trim();
+                    var tipo = tipoStr === "Corto" ? "BREAK_CORTO" : tipoStr === "TP Legal" ? "TP_LEGAL" : "TP_ILEGAL";
+                    return { salidaH:sH, llegadaH:lH, duracionMin:dur, tipo:tipo };
+                  }).filter(Boolean);
+                }
+                if (!c.BREAK_PAIRS) c.BREAK_PAIRS = [];
+                return c; });
               var factNorm = (json.facturas||[]).map(function(f){ var c=Object.assign({},f); if(c.sede) c.sede=normSede(c.sede); return c; });
               setData({marc:marcNorm,fact:factNorm});
               setFS("Memoria cargada: " + (json.marcaciones?json.marcaciones.length:0) + " registros");
