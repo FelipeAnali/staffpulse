@@ -122,7 +122,12 @@ function procBase(rows) {
   const iCCosto = colMap["CENTROCOSTO"];
 
   if (iID == null || iFecha == null || iHora == null || iFuncion == null) {
-    console.error("Columnas faltantes:", headers);
+    var faltantes = [];
+    if (iID == null) faltantes.push("IDENTIFICACION");
+    if (iFecha == null) faltantes.push("FECHA");
+    if (iHora == null) faltantes.push("HORA");
+    if (iFuncion == null) faltantes.push("FUNCION");
+    alert("Error: faltan columnas en el archivo de marcaciones: " + faltantes.join(", ") + ". Columnas encontradas: " + headers.join(", "));
     return [];
   }
 
