@@ -916,17 +916,18 @@ function ResumenView({ marc, fact, parametros }) {
     const sedesOk = [];
     Object.keys(sedesMap).forEach(sede => {
       const empCount = empPorSede[sede] ? Object.keys(empPorSede[sede]).length : 0;
-      const violCount = violPorSede[sede] ? Object.keys(violPorSede[sede]).length : 0;
-      const cumpl = empCount > 0 ? Math.round((1 - violCount / empCount) * 100) : 100;
-      // Contar cuántas políticas tienen cumplimiento <70% en esta sede
+      // Cumplimiento por sede = promedio del cumplimiento de cada política en esa sede
+      // Cumplimiento de cada política en la sede = (1 - afectadosEnSede / empleadosEnSede) × 100
       var polsRojas = 0;
-      if (violPorSedePol[sede] && empCount > 0) {
-        Object.keys(violPorSedePol[sede]).forEach(function(polId) {
-          var afectados = Object.keys(violPorSedePol[sede][polId]).length;
-          var polCumpl = Math.round((1 - afectados / empCount) * 100);
-          if (polCumpl < 70) polsRojas++;
-        });
-      }
+      var sumCumpl = 0;
+      var polsCount = globalResult.politicas.length;
+      globalResult.politicas.forEach(function(pol) {
+        var afectados = violPorSedePol[sede] && violPorSedePol[sede][pol.id] ? Object.keys(violPorSedePol[sede][pol.id]).length : 0;
+        var polCumpl = empCount > 0 ? Math.round((1 - afectados / empCount) * 100) : 100;
+        sumCumpl += polCumpl;
+        if (polCumpl < 70) polsRojas++;
+      });
+      const cumpl = polsCount > 0 ? Math.round(sumCumpl / polsCount) : 100;
       const obj = { sede:sede, cumplimiento:cumpl, empleados:empCount, polsRojas:polsRojas, registros:sedesMap[sede] };
       if (cumpl < 70) sedesCriticas.push(obj);
       else sedesOk.push(obj);
