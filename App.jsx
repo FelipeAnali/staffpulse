@@ -391,7 +391,6 @@ function procFact(rows) {
 var HC_NUM = HC.map(function(hc){ return parseInt(hc.split(":")[0]); });
 var HC_MAP = {};
 HC_NUM.forEach(function(h, i){ HC_MAP[h] = i; });
-var HC_MAP = {}; HC_NUM.forEach(function(h, i){ HC_MAP[h] = i; });
 
 function buildChart(marc, fact, f) {
   // -- Aplicar todos los filtros en UN SOLO recorrido sobre marcaciones --
@@ -3328,6 +3327,12 @@ function ExportModal({ data, filteredData, masterFilter, limpiarMarc, descargarA
   var _selSedes = useState(null), selSedes = _selSedes[0], setSelSedes = _selSedes[1];
   var _progress = useState(null), progress = _progress[0], setProgress = _progress[1];
   var _busq = useState(""), busq = _busq[0], setBusq = _busq[1];
+  var cancelledRef = useRef(false);
+
+  useEffect(function() {
+    cancelledRef.current = false;
+    return function() { cancelledRef.current = true; };
+  }, []);
 
   var allSedes = useMemo(function() {
     var s = {};
@@ -3366,6 +3371,7 @@ function ExportModal({ data, filteredData, masterFilter, limpiarMarc, descargarA
     setProgress({ current:0, total:sedesAExportar.length, sede:"" });
     var idx = 0;
     function next() {
+      if (cancelledRef.current) return;
       if (idx >= sedesAExportar.length) { setProgress(null); onClose(); return; }
       var sede = sedesAExportar[idx];
       setProgress({ current:idx+1, total:sedesAExportar.length, sede:sede });
@@ -3375,7 +3381,7 @@ function ExportModal({ data, filteredData, masterFilter, limpiarMarc, descargarA
       var nombre = "seguimiento_" + sede.replace(/\s+/g,"_") + "_" + fecha + ".json";
       descargarArchivo(jsonStr, nombre, "application/json");
       idx++;
-      setTimeout(next, 400);
+      if (!cancelledRef.current) setTimeout(next, 400);
     }
     setTimeout(next, 200);
   }
