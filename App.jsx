@@ -3523,7 +3523,7 @@ function MasterFilterModal({ data, masterFilter, setMasterFilter, filteredData, 
     if (m.MES) allMeses[m.MES] = 1;
   });
   data.fact.forEach(function(f) {
-    if (f.sede) allSedes[f.sede] = (allSedes[f.sede]||0);
+    if (f.sede) allSedes[f.sede] = (allSedes[f.sede]||0) + 1;
     if (f.mes) allMeses[f.mes] = 1;
   });
   var sedesList = Object.keys(allSedes).sort();
