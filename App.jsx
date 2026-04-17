@@ -31,7 +31,7 @@ var C = {
   zebra:"rgba(26,122,46,0.025)",gridHi:"rgba(26,122,46,0.10)",btnTxt:"#fff"
 };
 
-var USERS={admin:{pw:"6051fc84a7a0d74c225fb18a496b09952da5642e60723ecae543298edd7d82d6",role:"admin",name:"Administrador"},supervisor:{pw:"9a0ee89e00a006877eca0c28eebeb38aa301469b9cce8012b6ee04b13079a7e8",role:"supervisor",name:"Supervisor"},gerencia:{pw:"2f8f191656429c28ea6f334a5d8568aa0f62f64674b87dd26546368e09f7f756",role:"gerencia",name:"Gerencia"}};
+var USERS={admin:{pw:"6051fc84a7a0d74c225fb18a496b09952da5642e60723ecae543298edd7d82d6",role:"admin",name:"Administrador"}};
 
 async function hashPw(pw) {
   try {
@@ -927,11 +927,67 @@ function ResumenView({ marc, fact, parametros }) {
     });
     const topInfractores = Object.values(empInfMap).sort((a,b) => b.total-a.total).slice(0,5);
 
+    // ═══ COMPARATIVO MES vs MES ═══
+    const ORDEN_MES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+    const mesesArr = Object.keys(meses).sort((a,b) => ORDEN_MES.indexOf(a.toLowerCase().trim()) - ORDEN_MES.indexOf(b.toLowerCase().trim()));
+
+    let comparativo = null;
+    let alertas = [];
+    if (mesesArr.length >= 2) {
+      const mesActual = mesesArr[mesesArr.length - 1];
+      const mesAnterior = mesesArr[mesesArr.length - 2];
+
+      // Evaluar cada mes
+      const marcActual = marc.filter(m => m.MES === mesActual);
+      const marcAnterior = marc.filter(m => m.MES === mesAnterior);
+      const resultActual = evaluarPoliticas(marcActual, parametros, "Todas");
+      const resultAnterior = evaluarPoliticas(marcAnterior, parametros, "Todas");
+
+      const cumplActual = resultActual.politicas.length > 0 ? Math.round(resultActual.politicas.reduce((s,p) => s+p.cumplimiento, 0) / resultActual.politicas.length) : 100;
+      const cumplAnterior = resultAnterior.politicas.length > 0 ? Math.round(resultAnterior.politicas.reduce((s,p) => s+p.cumplimiento, 0) / resultAnterior.politicas.length) : 100;
+
+      // Empleados afectados por mes
+      const empAfActual = {};
+      resultActual.politicas.forEach(p => p.violadores.forEach(v => empAfActual[v.id] = 1));
+      const empAfAnterior = {};
+      resultAnterior.politicas.forEach(p => p.violadores.forEach(v => empAfAnterior[v.id] = 1));
+
+      // Ventas por mes
+      const ventaActual = fact.filter(f => f.mes === mesActual).reduce((s,f) => s+(f.venta||0), 0);
+      const ventaAnterior = fact.filter(f => f.mes === mesAnterior).reduce((s,f) => s+(f.venta||0), 0);
+
+      comparativo = {
+        mesActual, mesAnterior,
+        cumplActual, cumplAnterior, cumplDelta: cumplActual - cumplAnterior,
+        empAfActual: Object.keys(empAfActual).length,
+        empAfAnterior: Object.keys(empAfAnterior).length,
+        empAfDelta: Object.keys(empAfActual).length - Object.keys(empAfAnterior).length,
+        ventaActual, ventaAnterior, ventaDelta: ventaActual - ventaAnterior,
+      };
+
+      // Alertas automáticas: detectar cambios significativos por política
+      resultActual.politicas.forEach(polAct => {
+        const polAnt = resultAnterior.politicas.find(p => p.id === polAct.id);
+        if (!polAnt) return;
+        const delta = polAct.cumplimiento - polAnt.cumplimiento;
+        if (Math.abs(delta) >= 3) {
+          alertas.push({
+            tipo: delta > 0 ? "mejoro" : "empeoro",
+            pol: polAct,
+            delta: delta,
+            msg: "POL " + polAct.num + " (" + polAct.nombre + ") " + (delta > 0 ? "mejoró" : "empeoró") + " " + Math.abs(delta) + "% vs " + mesAnterior,
+          });
+        }
+      });
+      alertas.sort((a,b) => Math.abs(b.delta) - Math.abs(a.delta));
+    }
+
     return {
       totalSedes, totalEmpleados, totalDias, totalMarc, totalFact, meses:Object.keys(meses),
       promHoras, ventaTotal, promGlobal, sedesCriticas, sedesOk,
       polsEnRojo, polsEnAmarillo, topInfractores,
       politicas: globalResult.politicas,
+      comparativo, alertas,
     };
   }, [marc, fact, parametros]);
 
@@ -952,6 +1008,58 @@ function ResumenView({ marc, fact, parametros }) {
         <h2 style={{color:C.w,fontSize:20,fontWeight:800,margin:"0 0 4px"}}>Resumen Ejecutivo</h2>
         <p style={{color:C.td,fontSize:12,margin:0}}>{stats.meses.join(", ")} · {stats.totalSedes} sedes · {stats.totalEmpleados} empleados · {stats.totalDias} días</p>
       </div>
+
+      {stats.comparativo && (
+        <div style={{padding:"16px 20px",borderRadius:14,marginBottom:16,background:"linear-gradient(135deg,#f0fdf4,#ffffff)",border:"1px solid "+C.bd,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16}}>
+          {(() => {
+            const cmp = stats.comparativo;
+            const deltaColor = (d, inverso) => { const positivo = inverso ? d < 0 : d > 0; return d === 0 ? C.td : positivo ? C.p : C.dg; };
+            const deltaIcon = (d) => d > 0 ? "↑" : d < 0 ? "↓" : "→";
+            const tiles = [
+              { l:"Cumplimiento", v:cmp.cumplActual+"%", delta:cmp.cumplDelta, suf:"%", inverso:false },
+              { l:"Empleados Afectados", v:cmp.empAfActual, delta:cmp.empAfDelta, suf:"", inverso:true },
+              { l:"Venta", v:fmtMoney(cmp.ventaActual), delta:cmp.ventaDelta, suf:"", inverso:false, money:true },
+            ];
+            return tiles.map((t,i) => (
+              <div key={i} style={{borderRight:i<2?"1px solid "+C.bd:"none",paddingRight:16}}>
+                <div style={{fontSize:10,color:C.td,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:4}}>{t.l}</div>
+                <div style={{fontSize:18,fontWeight:800,color:C.t,fontFamily:"'DM Sans',sans-serif",marginBottom:3}}>{t.v}</div>
+                <div style={{fontSize:11,fontWeight:600,color:deltaColor(t.delta, t.inverso),display:"flex",alignItems:"center",gap:4}}>
+                  <span style={{fontSize:13}}>{deltaIcon(t.delta)}</span>
+                  <span>{t.money ? fmtMoney(Math.abs(t.delta)) : Math.abs(t.delta) + t.suf}</span>
+                  <span style={{color:C.td,fontWeight:400,fontSize:10}}>vs {cmp.mesAnterior}</span>
+                </div>
+              </div>
+            ));
+          })()}
+        </div>
+      )}
+
+      {stats.alertas && stats.alertas.length > 0 && (
+        <div style={{padding:"12px 16px",borderRadius:12,marginBottom:16,background:"rgba(217,119,6,0.06)",border:"1px solid rgba(217,119,6,0.2)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+            <span style={{fontSize:14}}>🔔</span>
+            <span style={{fontSize:12,fontWeight:700,color:C.ac,fontFamily:"'DM Sans',sans-serif",textTransform:"uppercase",letterSpacing:"0.5px"}}>Alertas Automáticas</span>
+            <span style={{fontSize:10,color:C.td}}>(cambios ≥3% vs mes anterior)</span>
+          </div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+            {stats.alertas.slice(0,6).map((a,i) => {
+              const bg = a.tipo === "mejoro" ? "rgba(26,122,46,0.08)" : "rgba(225,29,72,0.08)";
+              const br = a.tipo === "mejoro" ? "rgba(26,122,46,0.25)" : "rgba(225,29,72,0.25)";
+              const col = a.tipo === "mejoro" ? C.p : C.dg;
+              const icon = a.tipo === "mejoro" ? "↑" : "↓";
+              return (
+                <div key={i} style={{padding:"6px 12px",borderRadius:20,background:bg,border:"1px solid "+br,display:"flex",alignItems:"center",gap:6}}>
+                  <span style={{fontSize:13,color:col,fontWeight:800}}>{icon}</span>
+                  <span style={{fontSize:11,fontWeight:600,color:C.t}}>POL {a.pol.num}</span>
+                  <span style={{fontSize:10,color:C.td}}>{a.pol.nombre}</span>
+                  <span style={{fontSize:11,fontWeight:800,color:col}}>{a.delta > 0 ? "+" : ""}{a.delta}%</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div style={{padding:20,borderRadius:16,marginBottom:16,background:pctBg(stats.promGlobal),border:"2px solid "+pctBorder(stats.promGlobal),display:"flex",alignItems:"center",gap:20,flexWrap:"wrap"}}>
         <div style={{width:80,height:80,borderRadius:"50%",border:"4px solid "+pctColor(stats.promGlobal),display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
@@ -3668,7 +3776,7 @@ function App() {
   var _sb = useState(true), sidebar = _sb[0], setSB = _sb[1];
   var _em = useState(false), expM = _em[0], setExpM = _em[1];
   var _exModal = useState(false), exportModalOpen = _exModal[0], setExportModalOpen = _exModal[1];
-  var _lu = useState(""), lu = _lu[0], setLU = _lu[1];
+  var _lu = useState("admin"), lu = _lu[0], setLU = _lu[1];
   var _lp = useState(""), lp = _lp[0], setLP = _lp[1];
   var _le = useState(""), le = _le[0], setLE = _le[1];
   var _la = useState(0), loginAttempts = _la[0], setLoginAttempts = _la[1];
@@ -4029,16 +4137,16 @@ function App() {
   var hasMarc = filteredData.marc.length > 0;
   var hasFact = filteredData.fact.length > 0;
   var nav = [
-    {id:"upload",label:"Cargar Datos",r:["admin","supervisor","gerencia"]},
-    {id:"resumen",label:"Resumen",r:["admin","supervisor","gerencia"]},
-    {id:"dashboard",label:"Dashboard",r:["admin","supervisor","gerencia"]},
-    {id:"eficiencia",label:"Eficiencia",r:["admin","gerencia"]},
-    {id:"riesgo",label:"Riesgo",r:["admin","gerencia"]},
-    {id:"tendencia",label:"Tendencia",r:["admin","gerencia"]},
-    {id:"policies",label:"Politicas",r:["admin","gerencia"]},
-    {id:"auditoria",label:"Auditoria",r:["admin","gerencia"]},
-    {id:"rules",label:"Manual",r:["admin","supervisor","gerencia"]}
-  ].filter(function(n){return n.r.indexOf(user.role)>=0;});
+    {id:"upload",label:"Cargar Datos"},
+    {id:"resumen",label:"Resumen"},
+    {id:"dashboard",label:"Dashboard"},
+    {id:"eficiencia",label:"Eficiencia"},
+    {id:"riesgo",label:"Riesgo"},
+    {id:"tendencia",label:"Tendencia"},
+    {id:"policies",label:"Politicas"},
+    {id:"auditoria",label:"Auditoria"},
+    {id:"rules",label:"Manual"}
+  ];
 
   var content = null;
   try {
