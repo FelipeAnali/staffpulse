@@ -404,11 +404,22 @@ function procFact(rows) {
 }
 
 /* === BUILD CHART DATA === */
+// Formateo inteligente de dinero en pesos colombianos
+function fmtMoney(n) {
+  if (n == null || isNaN(n)) return "$0";
+  var v = Math.abs(n);
+  var sign = n < 0 ? "-" : "";
+  if (v >= 1e12) return sign + "$" + (v/1e12).toFixed(2) + " B";  // Billones
+  if (v >= 1e9)  return sign + "$" + (v/1e9).toFixed(2) + " MM"; // Miles de millones
+  if (v >= 1e6)  return sign + "$" + (v/1e6).toFixed(1) + " M";  // Millones
+  if (v >= 1e3)  return sign + "$" + Math.round(v/1e3) + " K";
+  return sign + "$" + Math.round(v);
+}
+
 // Precalcular los índices numéricos de HC una sola vez
 var HC_NUM = HC.map(function(hc){ return parseInt(hc.split(":")[0]); });
 var HC_MAP = {};
 HC_NUM.forEach(function(h, i){ HC_MAP[h] = i; });
-var HC_MAP = {}; HC_NUM.forEach(function(h, i){ HC_MAP[h] = i; });
 
 function buildChart(marc, fact, f) {
   // -- Aplicar todos los filtros en UN SOLO recorrido sobre marcaciones --
@@ -984,7 +995,7 @@ function ResumenView({ marc, fact, parametros }) {
             </div>
           ))}
           {stats.ventaTotal > 0 && <div style={{textAlign:"center"}}>
-            <div style={{fontSize:22,fontWeight:800,color:"#06b6d4"}}>{"$"+Math.round(stats.ventaTotal/1e6).toLocaleString()+"M"}</div>
+            <div style={{fontSize:22,fontWeight:800,color:"#06b6d4"}}>{fmtMoney(stats.ventaTotal)}</div>
             <div style={{fontSize:10,color:C.td,textTransform:"uppercase",letterSpacing:"0.3px"}}>Venta</div>
           </div>}
         </div>
@@ -1228,7 +1239,7 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
   }
   if (hasFact) {
     tarjetasStats.push({ l: "Max Trans/Hora", v: estadisticas.maxTransacciones, c: "#ec4899" });
-    if (estadisticas.ventaTotal > 0) tarjetasStats.push({ l: "Venta Total", v: "$" + Math.round(estadisticas.ventaTotal).toLocaleString(), c: "#06b6d4" });
+    if (estadisticas.ventaTotal > 0) tarjetasStats.push({ l: "Venta Total", v: fmtMoney(estadisticas.ventaTotal), c: "#06b6d4" });
   }
 
   // -- Filtros visibles (dinamicos) --
@@ -3345,6 +3356,12 @@ function ExportModal({ data, filteredData, masterFilter, limpiarMarc, descargarA
   var _selSedes = useState(null), selSedes = _selSedes[0], setSelSedes = _selSedes[1];
   var _progress = useState(null), progress = _progress[0], setProgress = _progress[1];
   var _busq = useState(""), busq = _busq[0], setBusq = _busq[1];
+  var cancelledRef = useRef(false);
+
+  useEffect(function() {
+    cancelledRef.current = false;
+    return function() { cancelledRef.current = true; };
+  }, []);
 
   var allSedes = useMemo(function() {
     var s = {};
@@ -3383,6 +3400,7 @@ function ExportModal({ data, filteredData, masterFilter, limpiarMarc, descargarA
     setProgress({ current:0, total:sedesAExportar.length, sede:"" });
     var idx = 0;
     function next() {
+      if (cancelledRef.current) return;
       if (idx >= sedesAExportar.length) { setProgress(null); onClose(); return; }
       var sede = sedesAExportar[idx];
       setProgress({ current:idx+1, total:sedesAExportar.length, sede:sede });
@@ -3392,7 +3410,7 @@ function ExportModal({ data, filteredData, masterFilter, limpiarMarc, descargarA
       var nombre = "seguimiento_" + sede.replace(/\s+/g,"_") + "_" + fecha + ".json";
       descargarArchivo(jsonStr, nombre, "application/json");
       idx++;
-      setTimeout(next, 400);
+      if (!cancelledRef.current) setTimeout(next, 400);
     }
     setTimeout(next, 200);
   }

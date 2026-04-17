@@ -387,6 +387,18 @@ function procFact(rows) {
 }
 
 /* === BUILD CHART DATA === */
+// Formateo inteligente de dinero en pesos colombianos
+function fmtMoney(n) {
+  if (n == null || isNaN(n)) return "$0";
+  var v = Math.abs(n);
+  var sign = n < 0 ? "-" : "";
+  if (v >= 1e12) return sign + "$" + (v/1e12).toFixed(2) + " B";  // Billones
+  if (v >= 1e9)  return sign + "$" + (v/1e9).toFixed(2) + " MM"; // Miles de millones
+  if (v >= 1e6)  return sign + "$" + (v/1e6).toFixed(1) + " M";  // Millones
+  if (v >= 1e3)  return sign + "$" + Math.round(v/1e3) + " K";
+  return sign + "$" + Math.round(v);
+}
+
 // Precalcular los índices numéricos de HC una sola vez
 var HC_NUM = HC.map(function(hc){ return parseInt(hc.split(":")[0]); });
 var HC_MAP = {};
@@ -966,7 +978,7 @@ function ResumenView({ marc, fact, parametros }) {
             </div>
           ))}
           {stats.ventaTotal > 0 && <div style={{textAlign:"center"}}>
-            <div style={{fontSize:22,fontWeight:800,color:"#06b6d4"}}>{"$"+Math.round(stats.ventaTotal/1e6).toLocaleString()+"M"}</div>
+            <div style={{fontSize:22,fontWeight:800,color:"#06b6d4"}}>{fmtMoney(stats.ventaTotal)}</div>
             <div style={{fontSize:10,color:C.td,textTransform:"uppercase",letterSpacing:"0.3px"}}>Venta</div>
           </div>}
         </div>
@@ -1210,7 +1222,7 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
   }
   if (hasFact) {
     tarjetasStats.push({ l: "Max Trans/Hora", v: estadisticas.maxTransacciones, c: "#ec4899" });
-    if (estadisticas.ventaTotal > 0) tarjetasStats.push({ l: "Venta Total", v: "$" + Math.round(estadisticas.ventaTotal).toLocaleString(), c: "#06b6d4" });
+    if (estadisticas.ventaTotal > 0) tarjetasStats.push({ l: "Venta Total", v: fmtMoney(estadisticas.ventaTotal), c: "#06b6d4" });
   }
 
   // -- Filtros visibles (dinamicos) --
