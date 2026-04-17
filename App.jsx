@@ -136,9 +136,9 @@ function procBase(rows) {
     let fechaRaw = row[iFecha];
     let fecha;
     if (typeof fechaRaw === "number" && fechaRaw > 40000) {
-      /* Excel serial number: convertir a YYYY.MM.DD */
+      /* Excel serial number: convertir a YYYY.MM.DD usando UTC para evitar shift de timezone */
       const d = new Date((fechaRaw - 25569) * 86400000);
-      fecha = d.getFullYear() + "." + String(d.getMonth()+1).padStart(2,"0") + "." + String(d.getDate()).padStart(2,"0");
+      fecha = d.getUTCFullYear() + "." + String(d.getUTCMonth()+1).padStart(2,"0") + "." + String(d.getUTCDate()).padStart(2,"0");
     } else if (fechaRaw && typeof fechaRaw === "object" && typeof fechaRaw.getFullYear === "function") {
       /* Date object de SheetJS con cellDates */
       fecha = fechaRaw.getFullYear() + "." + String(fechaRaw.getMonth()+1).padStart(2,"0") + "." + String(fechaRaw.getDate()).padStart(2,"0");
@@ -260,13 +260,20 @@ function procBase(rows) {
     let dObj = null;
     const fs = String(emp.fecha);
     if (typeof emp.fecha === "number" && emp.fecha > 40000) {
-      // Excel serial number: days since 1899-12-30
-      dObj = new Date((emp.fecha - 25569) * 86400000);
+      // Excel serial number: days since 1899-12-30 — parse as local date
+      const excelDate = new Date((emp.fecha - 25569) * 86400000);
+      dObj = new Date(excelDate.getUTCFullYear(), excelDate.getUTCMonth(), excelDate.getUTCDate());
     } else if (fs.includes(".")) {
       const parts = fs.split(".");
       dObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
     } else if (fs.includes("-")) {
-      dObj = new Date(fs);
+      // YYYY-MM-DD: parse as local time to avoid timezone shift (UTC-5 en Colombia)
+      const parts = fs.split("-");
+      if (parts.length === 3) {
+        dObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+      } else {
+        dObj = new Date(fs);
+      }
     } else if (fs.includes("/")) {
       const parts = fs.split("/");
       dObj = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
