@@ -1809,7 +1809,7 @@ function PolView({ marc: marcaciones = [], parametros, setParametros, userName }
       idx = end;
       if (!cancelled) setProgresoPol(Math.round(idx / empleados.length * 100));
       if (idx < empleados.length) {
-        setTimeout(processChunk, 0);
+        if (!cancelled) setTimeout(processChunk, 0);
       } else {
         const politicas = POLITICAS_DEF.map(pd => {
           const r = resultados[pd.id];
@@ -2735,7 +2735,7 @@ function TendenciaView({ marc, parametros }) {
         const filtradas = marc.filter(m => (sedeSel==="Todas"||m.DEPENDENCIA===sedeSel) && m.MES===mes);
         cache[mes] = filtradas.length > 0 ? evaluarPoliticas(filtradas, params, "Todas").politicas : null;
         mi++;
-        setTimeout(nextMes, 0);
+        if (!cancelled) setTimeout(nextMes, 0);
       } else {
         const series = POLITICAS_DEF.map(pd => ({
           id:pd.id, num:pd.num, nombre:pd.nombre,
@@ -2883,18 +2883,38 @@ function TendenciaView({ marc, parametros }) {
 
 function AuditoriaView({ marc: marcaciones = [] }) {
   const [busq, setBusq] = useState("");
-  const [empSel, setEmpSel] = useState(null);  // abre el modal
+  const [empSel, setEmpSel] = useState(null);
   const [diaSel, setDiaSel] = useState(null);
+  const [sedeFiltro, setSedeFiltro] = useState("Todas");
+  const [mesFiltro, setMesFiltro] = useState("Todos");
+
+  const optsAudit = useMemo(() => {
+    const ORD = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+    const sedes = {}, meses = {};
+    marcaciones.forEach(m => { if (m.DEPENDENCIA) sedes[m.DEPENDENCIA]=1; if (m.MES) meses[m.MES]=1; });
+    return {
+      sedes: ["Todas", ...Object.keys(sedes).sort()],
+      meses: ["Todos", ...Object.keys(meses).sort((a,b) => ORD.indexOf(a.toLowerCase().trim()) - ORD.indexOf(b.toLowerCase().trim()))],
+    };
+  }, [marcaciones]);
+
+  const marcFilt = useMemo(() => {
+    return marcaciones.filter(m => {
+      if (sedeFiltro !== "Todas" && m.DEPENDENCIA !== sedeFiltro) return false;
+      if (mesFiltro !== "Todos" && m.MES !== mesFiltro) return false;
+      return true;
+    });
+  }, [marcaciones, sedeFiltro, mesFiltro]);
 
   const empleados = useMemo(() => {
     const map = {};
-    marcaciones.forEach((m) => {
+    marcFilt.forEach((m) => {
       const id = m.IDENTIFICACION;
       if (!map[id]) map[id] = { id, nombre: m.EMPLEADO, cargo: m.CARGO, sede: m.DEPENDENCIA, seccion: m.CENTROCOSTO, dias: [] };
       map[id].dias.push(m);
     });
     return Object.values(map).sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
-  }, [marcaciones]);
+  }, [marcFilt]);
 
   const empFiltrados = useMemo(() => {
     const q = busq.trim().toLowerCase();
@@ -2936,9 +2956,15 @@ function AuditoriaView({ marc: marcaciones = [] }) {
     <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 120px)"}}>
 
       {/* ── CABECERA ── */}
-      <div style={{marginBottom:20}}>
+      <div style={{marginBottom:16}}>
         <h2 style={{color:C.w,fontSize:18,fontWeight:800,margin:"0 0 4px",letterSpacing:"-0.3px"}}>Auditoría de Cálculos</h2>
         <p style={{color:C.td,fontSize:12,margin:0}}>{empleados.length} empleados · Selecciona uno para ver el detalle de su jornada paso a paso</p>
+      </div>
+
+      {/* ── FILTROS ── */}
+      <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12,padding:"8px 12px",borderRadius:12,background:C.sf,border:"1px solid "+C.bd,boxShadow:"0 1px 4px rgba(0,0,0,0.03)",alignItems:"center"}}>
+        {optsAudit.sedes.length > 1 && <Pill label="Sede" value={sedeFiltro} options={optsAudit.sedes} onChange={function(v){setSedeFiltro(v);setEmpSel(null);}} />}
+        {optsAudit.meses.length > 1 && <Pill label="Mes" value={mesFiltro} options={optsAudit.meses} onChange={function(v){setMesFiltro(v);setEmpSel(null);}} />}
       </div>
 
       {/* ── BUSCADOR ── */}
@@ -4264,14 +4290,15 @@ function App() {
 class ErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { hasError: false, error: null }; }
   static getDerivedStateFromError(error) { return { hasError: true, error: error }; }
-  componentDidCatch(error, info) { console.error("ErrorBoundary:", error, info); }
+  componentDidCatch(error, info) { console.error("ErrorBoundary:", error, info); this.setState({ componentStack: info && info.componentStack ? info.componentStack : "" }); }
   render() {
     if (this.state.hasError) {
       return React.createElement("div", {style:{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f0f5f1",fontFamily:"'DM Sans','Plus Jakarta Sans',system-ui,sans-serif"}},
         React.createElement("div", {style:{padding:40,borderRadius:20,background:"#fff",border:"1px solid #daeade",maxWidth:500,textAlign:"center",boxShadow:"0 4px 24px rgba(31,107,46,0.1)"}},
           React.createElement("div", {style:{fontSize:40,marginBottom:16}}, "⚠️"),
           React.createElement("h2", {style:{color:"#111a14",fontSize:18,fontWeight:700,margin:"0 0 8px"}}, "Algo salió mal"),
-          React.createElement("p", {style:{color:"#6b7f70",fontSize:13,margin:"0 0 16px"}}, String(this.state.error && this.state.error.message || "Error desconocido")),
+          React.createElement("p", {style:{color:"#6b7f70",fontSize:13,margin:"0 0 12px"}}, String(this.state.error && this.state.error.message || "Error desconocido")),
+          this.state.componentStack ? React.createElement("pre", {style:{color:"#9ca3af",fontSize:9,margin:"0 0 16px",textAlign:"left",maxHeight:80,overflow:"auto",padding:8,background:"#f3f4f6",borderRadius:8,whiteSpace:"pre-wrap",wordBreak:"break-all"}}, this.state.componentStack) : null,
           React.createElement("button", {onClick:function(){window.location.reload();},style:{padding:"10px 24px",borderRadius:10,fontSize:13,fontWeight:700,background:"linear-gradient(135deg,#1f6b2e,#2d8a41)",border:"none",color:"#fff",cursor:"pointer"}}, "Recargar App")
         )
       );
