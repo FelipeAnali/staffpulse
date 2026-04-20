@@ -2386,38 +2386,340 @@ function PolView({ marc: marcaciones = [], parametros, setParametros, userName }
 
 /* === RULES VIEW === */
 function RulesView() {
-  const rules = [
-    {t:"Clasificacion de Breaks",d:"Break Corto (<45min): descanso normal, politica permite 15min + 3min tolerancia. Turno Partido Ilegal (45-170min): no es break corto ni TP legal. Turno Partido Legal (>=170min / 2h50m): cumple el minimo legal para turno partido."},
-    {t:"Grilla Horaria (1/0)",d:"Cada celda horaria indica presencia del empleado. Si la hora esta entre ENTRADA y SALIDA (excluyendo bloques de turno partido), se marca 1. De lo contrario, 0."},
-    {t:"Tipo de Jornada",d:"Jorn Con = Jornada Continua (sin turno partido). Tur Par Legal = tiene turno partido >=2h50m. Tur Par Ilegal = turno partido <2h50m (no cumple). Sin Marcacion = no registro entrada/salida."},
-    {t:"POL 1: Jornadas Extendidas sin Descanso",d:"Trabaja mas del umbral de jornada extendida (default 10h) y su break corto total fue menor al minimo (default 8min). No tuvo descanso real."},
-    {t:"POL 2: Break Menor al Minimo",d:"Tuvo break corto pero fue inferior al minimo establecido (default 8min). Indica que el descanso fue insuficiente."},
-    {t:"POL 3: Jornadas Excesivas",d:"Horas efectivas superan el maximo diario permitido (default 9h). La jornada normal es 7h, el tope absoluto es 9h."},
-    {t:"POL 4: Turnos Partidos Excesivos",d:"Mas turnos partidos en la semana de los permitidos. Distingue entre legales (>=2h50m) e ilegales (<2h50m). Configurable por cargo."},
-    {t:"POL 5: Extension de Breaks",d:"Break corto que excede lo permitido (15min + 3min tolerancia = 18min) O turno partido ilegal (45-170min, zona gris que no es ni break ni TP legal)."},
-    {t:"POL 6: Domingos Supervisores",d:"Supervisores son ocasionales: maximo N domingos por mes (default 2). Si trabajan mas, se considera habitual y viola la politica."},
-    {t:"POL 7: Domingos Personal de Base",d:"Personal base puede ser habitual, pero debe haber equilibrio: al menos N domingo(s) libre(s) al mes (default 1). No todos los domingos trabajados."},
-    {t:"POL 8: HE Semanal",d:"Horas extra acumuladas en la semana no deben superar el limite (default 12h). Se calcula como: horas trabajadas - jornada normal, sumado por semana."},
-    {t:"POL 9: HE Diaria",d:"Horas extra en un dia no deben superar el limite (default 2h). Si la jornada normal es 7h, trabajar mas de 9h (7+2) genera violacion."},
-    {t:"Curva de Venta vs Personal",d:"Suma de 1s de la grilla horaria por hora (promedio por dia) comparado con transacciones de facturacion. Permite ver si el personal esta alineado con la demanda."},
-    {t:"Quincena Retail",d:"Dias de alto flujo de ventas: 1, 2, 3, 15, 16, 17, 30, 31 del mes (y 28 de febrero). Filtro para analizar dotacion en dias criticos."}
+  const [seccionAbierta, setSeccionAbierta] = useState("vistas");
+
+  const secciones = [
+    { id:"vistas", t:"📊 Vistas de la App" },
+    { id:"filtros", t:"🔍 Filtros y Cómo Usarlos" },
+    { id:"exportar", t:"💾 Qué Puedes Exportar" },
+    { id:"editable", t:"✏️ Qué es Editable" },
+    { id:"politicas", t:"📋 Las 9 Políticas" },
+    { id:"conceptos", t:"📖 Conceptos" },
+    { id:"flujo", t:"🔄 Flujo de Trabajo" },
+    { id:"faq", t:"❓ Preguntas Frecuentes" },
+  ];
+
+  const vistas = [
+    { nombre:"Cargar Datos", icono:"⬆", desc:"Punto de entrada. Aquí cargas los archivos necesarios para que la app funcione.",
+      acepta:[ "BASE_DE_DATOS_MARCACIONES.xlsm (marcaciones de empleados)", "FACTURAS / GRAFICA_FINAL.xlsx (facturación por hora)", "Ventas_x_Hora_Semana.xlsx (alternativa de facturación)", "Archivo .json de memoria (exportado previamente)", "CSV con separador ';' (para marcaciones grandes)" ],
+      accion:"La app detecta automáticamente el tipo de archivo por su contenido." },
+    { nombre:"Resumen", icono:"📊", desc:"Vista ejecutiva con un vistazo general del estado de cumplimiento.",
+      acepta:[ "Comparativo mes vs mes (si hay 2+ meses cargados)", "Alertas automáticas de políticas que cambiaron 3%+", "Banner de cumplimiento general", "Top 5 empleados con más infracciones", "Ranking completo de sedes por cumplimiento", "Grid de las 9 políticas con su estado actual" ] },
+    { nombre:"Dashboard", icono:"◼", desc:"Curva de venta vs nivel de personal. La vista más usada del día a día.",
+      acepta:[ "Gráfico combinado: barras (personal) + línea (venta)", "8 filtros: Sede, Sección, Clase, Mes, DiaSem, Semana, Día, Quincena", "6 tarjetas de stats: Empleados, Horas/día, Max personal/hora, Días, Transacciones, Venta Total", "Tabla detallada con paginación y búsqueda", "Toggle Gráfico / Tabla / Ambos" ] },
+    { nombre:"Eficiencia", icono:"⚡", desc:"Relación entre personal asignado y ventas generadas. Identifica horas con exceso/falta de personal.",
+      acepta:[ "Ratio Ventas / Personal por hora", "Ranking de sedes por eficiencia", "Los mismos 8 filtros que Dashboard" ] },
+    { nombre:"Riesgo", icono:"⚠", desc:"Ranking de empleados con más infracciones acumuladas en todas las políticas.",
+      acepta:[ "Lista ordenada por total de violaciones", "Filtros: Sede, Mes, Política específica", "Detalle por empleado: días, cargo, cuántas violó de cada política" ] },
+    { nombre:"Tendencia", icono:"↗", desc:"Evolución mes a mes del cumplimiento de cada política.",
+      acepta:[ "Gráfico de líneas por política", "Cálculo progresivo (puede tomar segundos)", "Filtro por Sede" ] },
+    { nombre:"Políticas", icono:"📋", desc:"Vista central del análisis. Aquí ves qué políticas se cumplen y cuáles no, con lista de violadores.",
+      acepta:[ "9 tarjetas con % de cumplimiento de cada política", "Al hacer clic en una tarjeta, ves la lista de violadores", "Botón 'Configurar Parámetros' para ajustar umbrales", "Botón 'Generar Informe' → PDF/HTML descargable", "Botón 'Exportar a Excel' → archivo con formato y colores", "Filtros: Sede, Mes" ] },
+    { nombre:"Auditoría", icono:"🔍", desc:"Detalle paso a paso de cómo se calculó la jornada de UN empleado en UN día específico.",
+      acepta:[ "Buscador por nombre, ID o cargo", "Filtros: Sede, Mes", "Modal con timeline del día: entrada, breaks, salida", "Explicación de cada cálculo de política aplicada" ] },
+    { nombre:"Manual", icono:"📖", desc:"Este documento. Guía completa de la aplicación." },
+  ];
+
+  const filtros = [
+    { tipo:"Filtro Maestro", donde:"Botón 'Filtro Maestro' en la barra superior",
+      desc:"Filtro GLOBAL que afecta TODAS las vistas al mismo tiempo. Ideal cuando solo te interesa trabajar con una sede o un mes específico durante toda la sesión.",
+      permite:[ "Seleccionar una o varias sedes con buscador", "Seleccionar uno o varios meses", "Ver cuántos registros quedan después de filtrar", "Limpiar con un clic" ] },
+    { tipo:"Filtros de Vista (Pills)", donde:"Barra de Pills en cada vista (Dashboard, Eficiencia, etc.)",
+      desc:"Filtros LOCALES que solo afectan la vista donde estás. Se combinan con el Filtro Maestro si está activo.",
+      permite:[ "Sede · Sección · Clase · Mes · Día de semana · Semana · Día · Quincena", "Cada filtro es independiente, puedes combinar varios", "Botón 'Limpiar' para resetearlos todos" ] },
+    { tipo:"Búsqueda de Texto", donde:"Input de búsqueda dentro de tablas y Auditoría",
+      desc:"Busca por nombre, ID, cargo o texto libre dentro de los registros visibles." },
+  ];
+
+  const exportar = [
+    { que:"Memoria Digital (.json)", donde:"Topbar → botón 'Exportar Memoria'",
+      contiene:"Todas las marcaciones + facturas procesadas. Se puede recargar después para continuar el análisis sin volver a subir Excel.",
+      modos:[ "📦 Consolidado: un solo archivo con todo", "🏪 Todas las sedes: un archivo por sede (genera N archivos automáticamente)", "✅ Seleccionar: elige qué sedes exportar" ] },
+    { que:"Datos para Excel (.txt)", donde:"Topbar → botón 'Excel'",
+      contiene:"Marcaciones procesadas en formato TSV (tab-separated). Se abre en Excel/Google Sheets copiando el contenido." },
+    { que:"Informe PDF (vista Políticas)", donde:"Políticas → 'Generar Informe'",
+      contiene:"Reporte HTML listo para imprimir como PDF. Incluye resumen ejecutivo, detalles por política, firmas de responsables, marca de agua de confidencialidad." },
+    { que:"Políticas a Excel (vista Políticas)", donde:"Políticas → 'Exportar Excel'",
+      contiene:"HTML con formato compatible con Excel. Tablas con colores, cumplimiento destacado, violadores detallados." },
+    { que:"Todo tiene marca de agua", donde:"Automático en todos los exports",
+      contiene:"'Generado por [usuario] el [fecha] - Documento Confidencial - Supertiendas Cañaveral S.A.'" },
+  ];
+
+  const editable = [
+    { area:"Parámetros de Políticas", donde:"Políticas → 'Configurar Parámetros'",
+      si:[ "Jornada normal (default 7h)", "Jornada máxima día (default 9h)", "Jornada extendida (default 10h)", "Break mínimo (default 8min)", "Break normal max (default 15min)", "Tolerancia break (default 3min)", "Break max permitido (default 45min)", "Turno partido legal min (default 170min)", "Turno partido max semana (default 2)", "Cargos que aplican turno partido (lista personalizable)", "Domingos max supervisores (default 2)", "Cargos supervisor (default: SUPERVISOR,COORDINADOR,ADMINISTRADOR)", "Domingos min descanso base (default 1)", "Horas extra max día (default 2h)", "Horas extra max semana (default 12h)" ],
+      no:[ "Las fórmulas de cálculo de las políticas", "La lógica de clasificación de breaks", "El formato de los archivos de entrada" ] },
+    { area:"Datos de Empleados", si:["Nada editable desde la app"],
+      no:[ "Los datos vienen del Excel y son de solo lectura", "Para cambios reales hay que modificar el archivo fuente" ] },
+    { area:"Sedes y Nombres", si:["La app normaliza automáticamente los nombres (quita 'SC' duplicados, trim espacios)"],
+      no:[ "No se pueden renombrar sedes desde la app", "Si hay nombres inconsistentes, hay que corregirlos en el Excel" ] },
+  ];
+
+  const politicas = [
+    { num:1, sigla:"JEX", nombre:"Jornadas Extendidas sin Descanso", desc:"Detecta cuando un empleado trabaja más del umbral de jornada extendida Y no tuvo un descanso mínimo. Es una alerta de carga laboral sin pausa.", formula:"horas_trabajadas > 10h Y break_corto_total < 8min", defaults:"Umbral: 10h · Break mínimo: 8min", nivel:"Por día", aplica:"Todos los empleados" },
+    { num:2, sigla:"BRK", nombre:"Break Menor al Mínimo", desc:"Detecta cuando el empleado tuvo un break corto, pero fue demasiado breve (menos del mínimo establecido).", formula:"break_corto_max < 8min", defaults:"Mínimo: 8min", nivel:"Por día", aplica:"Todos los empleados" },
+    { num:3, sigla:"JXC", nombre:"Jornadas Excesivas", desc:"Detecta cuando la jornada supera el máximo diario permitido. Es el tope absoluto de horas diarias.", formula:"horas_trabajadas > 9h", defaults:"Tope: 9h", nivel:"Por día", aplica:"Todos los empleados" },
+    { num:4, sigla:"TPE", nombre:"Turnos Partidos Excesivos", desc:"Detecta cuando un empleado tiene más de N turnos partidos en una semana.", formula:"turnos_partidos_semana > 2", defaults:"Máx semana: 2 · Aplica a todos los cargos por default", nivel:"Por semana", aplica:"Configurable (lista de cargos)" },
+    { num:5, sigla:"EBR", nombre:"Extensión de Breaks", desc:"Detecta breaks que exceden lo permitido O turnos partidos ilegales (ni break ni TP legal).", formula:"break_corto > 18min (15+3 tolerancia) O TP 45-170min", defaults:"Normal 15min + tolerancia 3min · TP legal >= 170min", nivel:"Por día", aplica:"Todos los empleados" },
+    { num:6, sigla:"DSU", nombre:"Domingos Supervisores", desc:"Supervisores deberían ser ocasionales en domingos. Detecta si trabajan más de N domingos/mes.", formula:"domingos_trabajados_mes > 2 (si es supervisor)", defaults:"Máx: 2 · Cargos: SUPERVISOR, COORDINADOR, ADMINISTRADOR", nivel:"Por mes", aplica:"Solo cargos supervisor" },
+    { num:7, sigla:"DBA", nombre:"Domingos Personal Base", desc:"Personal de base puede trabajar habitualmente, pero debe tener equilibrio: al menos 1 domingo libre al mes.", formula:"domingos_libres_mes < 1", defaults:"Min domingos libres: 1", nivel:"Por mes", aplica:"Empleados NO supervisores" },
+    { num:8, sigla:"HES", nombre:"HE Semanal", desc:"Horas extra acumuladas en una semana no deben superar el límite legal/interno.", formula:"suma_HE_semana > 12h", defaults:"Máx: 12h/semana", nivel:"Por semana", aplica:"Todos los empleados" },
+    { num:9, sigla:"HED", nombre:"HE Diaria", desc:"Horas extra en un solo día no deben superar el límite.", formula:"HE_dia > 2h (es decir, jornada > 9h si jornada normal = 7h)", defaults:"Máx: 2h/día", nivel:"Por día", aplica:"Todos los empleados" },
+  ];
+
+  const conceptos = [
+    { t:"Marcación", d:"Cada registro de entrada/salida/break de un empleado. Viene del archivo de reloj/control de acceso." },
+    { t:"Jornada Continua (Jorn Con)", d:"Turno sin interrupción mayor a 45 minutos. El empleado trabaja seguido con solo breaks cortos." },
+    { t:"Turno Partido Legal (Tur Par Legal)", d:"Jornada con una pausa >= 2h50min (170min) entre dos bloques de trabajo. Cumple el mínimo legal colombiano." },
+    { t:"Turno Partido Ilegal (Tur Par Ilegal)", d:"Jornada con pausa entre 45min y 2h50min. Es zona gris: ni break corto ni TP legal. Viola política 5." },
+    { t:"Sin Marcación", d:"Empleado sin registro de entrada y salida ese día. No se puede calcular horas trabajadas." },
+    { t:"Break Corto", d:"Pausa menor a 45 minutos. Descanso normal para comer o descansar durante la jornada." },
+    { t:"Grilla Horaria (1/0)", d:"Vector que indica en qué horas del día el empleado estaba presente. 1 = presente, 0 = ausente. Se usa para la curva de personal." },
+    { t:"Quincena Retail", d:"Días de alto flujo de ventas típicos del retail colombiano: 1, 2, 3, 15, 16, 17, 30, 31 (y 28-29 de febrero). No es la quincena laboral tradicional." },
+    { t:"Cumplimiento de Política", d:"% de empleados que NO violaron la política. Fórmula: (1 - afectados/total_empleados) × 100. Si 50 de 200 empleados violaron, el cumplimiento es 75%." },
+    { t:"Empleados Afectados", d:"Cantidad de empleados ÚNICOS que violaron al menos una vez. Si Juan violó 30 veces, cuenta como 1 empleado afectado." },
+    { t:"Total Violaciones", d:"Cantidad de EVENTOS de violación. Si Juan violó 30 días, son 30 violaciones. Siempre >= Empleados Afectados." },
+    { t:"Sede Crítica", d:"Sede con cumplimiento general menor a 70%. Aparece en el banner rojo del Resumen." },
+  ];
+
+  const flujo = [
+    { paso:1, t:"Cargar los datos", d:"Ve a 'Cargar Datos', sube los Excel de marcaciones y facturación. La app los procesa automáticamente." },
+    { paso:2, t:"Revisar el Resumen", d:"Entra a 'Resumen' para obtener una vista ejecutiva. Aquí verás alertas automáticas si algo cambió respecto al mes anterior." },
+    { paso:3, t:"Analizar el Dashboard", d:"Ve a 'Dashboard' para entender la relación entre personal y ventas por hora. Usa los filtros para profundizar por sede o día." },
+    { paso:4, t:"Revisar Políticas", d:"Entra a 'Políticas'. Si hay políticas en rojo, haz clic en la tarjeta para ver quiénes violaron." },
+    { paso:5, t:"Auditar casos específicos", d:"Si un empleado tiene muchas infracciones, ve a 'Auditoría' para ver día por día cómo se calculó." },
+    { paso:6, t:"Exportar para gestión", d:"Genera informe PDF desde 'Políticas' para reuniones. Exporta la memoria (.json) si quieres continuar el análisis después." },
+    { paso:7, t:"Acción en campo", d:"Con los datos de sedes críticas y empleados infractores, el equipo de RH/Ops puede tomar decisiones: ajustar turnos, capacitar supervisores, revisar contratos." },
+  ];
+
+  const faq = [
+    { q:"¿Los datos se guardan en algún lado?", a:"NO. La app funciona solo en la memoria del navegador. Si cierras la pestaña, los datos se pierden. Para conservarlos usa 'Exportar Memoria'." },
+    { q:"¿Por qué me desconecta después de 30 minutos?", a:"Es una medida de seguridad: si dejas la computadora abierta sin actividad, se borra todo para que nadie vea información sensible. Cualquier clic o tecla reinicia el contador." },
+    { q:"¿Puedo cambiar los umbrales de las políticas?", a:"Sí, en Políticas → 'Configurar Parámetros'. Los cambios aplican inmediatamente a Políticas, Riesgo y Tendencia." },
+    { q:"¿Por qué una sede aparece con 0%?", a:"Si el Resumen muestra 0%, es porque el promedio del cumplimiento de sus 9 políticas es 0. Probablemente todos los empleados violaron varias políticas." },
+    { q:"¿Cómo comparo 2 meses diferentes?", a:"En el Resumen verás automáticamente el comparativo mes actual vs anterior. En Tendencia ves la evolución de todos los meses." },
+    { q:"¿Qué pasa si cargo el mismo archivo dos veces?", a:"Se acumulan los datos. Si quieres empezar de cero, usa el botón 'Reiniciar' en el topbar." },
+    { q:"¿Funciona en el celular?", a:"Actualmente la app está optimizada para computador/tablet. En celular se puede ver pero los filtros y tablas son menos cómodos." },
+    { q:"¿Cómo genero un informe para mi jefe?", a:"Ve a Políticas → 'Generar Informe'. Se descarga un HTML que puedes imprimir como PDF. Lleva marca de agua de confidencialidad." },
+    { q:"¿Puedo compartir el archivo .json con otro analista?", a:"Sí. El .json tiene metadata de quién lo generó y cuándo. Es portable entre computadores." },
+    { q:"¿Los cálculos son en tiempo real?", a:"Sí. Cada vez que cambias un filtro o parámetro, los cálculos se recalculan al instante sobre los datos cargados." },
   ];
 
   return (
     <div>
-      <h2 style={{color:C.w,fontSize:18,fontWeight:700,margin:"0 0 6px"}}>Manual de Reglas y Metodologia</h2>
-      <p style={{color:C.td,fontSize:12,margin:"0 0 16px"}}>Como se toman las decisiones y se calculan los indicadores</p>
-      {rules.map(function(r, i) {
-        return (
-          <div key={"rule-"+i} style={{padding:14,borderRadius:12,background:C.sf,border:"1px solid "+C.bd,marginBottom:8,boxShadow:"0 1px 3px rgba(31,107,46,0.06)"}}>
-            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-              <div style={{width:24,height:24,borderRadius:6,background:C.pg,display:"flex",alignItems:"center",justifyContent:"center",color:C.p,fontSize:11,fontWeight:700,flexShrink:0}}>{String(i+1)}</div>
-              <span style={{color:C.w,fontSize:13,fontWeight:600}}>{r.t}</span>
-            </div>
-            <p style={{color:C.tm,fontSize:12,lineHeight:"1.5",margin:"0",paddingLeft:"32px"}}>{r.d}</p>
+      <div style={{marginBottom:20}}>
+        <h2 style={{color:C.t,fontSize:20,fontWeight:800,margin:"0 0 4px",fontFamily:"'DM Sans',sans-serif",letterSpacing:"-0.3px"}}>Manual de la Aplicación</h2>
+        <p style={{color:C.td,fontSize:12,margin:0}}>Guía completa: vistas, filtros, exportación, ediciones y metodología</p>
+      </div>
+
+      <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:20,padding:"10px 12px",borderRadius:14,background:C.sf,border:"1px solid "+C.bd,boxShadow:"0 1px 4px rgba(0,0,0,0.03)"}}>
+        {secciones.map(function(s){
+          var act = seccionAbierta === s.id;
+          return (
+            <button key={s.id} onClick={function(){setSeccionAbierta(s.id);}}
+              style={{padding:"8px 14px",borderRadius:10,fontSize:12,fontWeight:act?700:500,
+                background:act?C.p:"transparent",border:"1.5px solid "+(act?C.p:C.bd),
+                color:act?"#fff":C.tm,cursor:"pointer",transition:"all 0.2s",
+                fontFamily:"'DM Sans',sans-serif",
+                boxShadow:act?"0 2px 8px rgba(26,122,46,0.2)":"none"}}>{s.t}</button>
+          );
+        })}
+      </div>
+
+      {seccionAbierta === "vistas" && (
+        <div>
+          <div style={{padding:16,borderRadius:12,background:C.pg,border:"1px solid "+C.bd,marginBottom:16}}>
+            <p style={{color:C.t,fontSize:13,margin:0,lineHeight:"1.6"}}>La app tiene <b>9 vistas principales</b> en la barra lateral. Cada una está diseñada para un propósito específico.</p>
           </div>
-        );
-      })}
+          {vistas.map(function(v,i){
+            return (
+              <div key={i} style={{padding:18,borderRadius:12,background:C.sf,border:"1px solid "+C.bd,marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                  <div style={{width:32,height:32,borderRadius:8,background:C.pg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>{v.icono}</div>
+                  <span style={{color:C.t,fontSize:15,fontWeight:700,fontFamily:"'DM Sans',sans-serif"}}>{v.nombre}</span>
+                </div>
+                <p style={{color:C.tm,fontSize:12,lineHeight:"1.6",margin:"0 0 10px 0"}}>{v.desc}</p>
+                {v.acepta && (
+                  <div style={{paddingLeft:12,borderLeft:"2px solid "+C.bd}}>
+                    <div style={{fontSize:11,fontWeight:700,color:C.td,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.5px"}}>Qué encontrarás aquí:</div>
+                    {v.acepta.map(function(item,j){
+                      return <div key={j} style={{fontSize:12,color:C.tm,marginBottom:4,lineHeight:"1.5"}}>• {item}</div>;
+                    })}
+                  </div>
+                )}
+                {v.accion && <div style={{marginTop:10,padding:10,borderRadius:8,background:C.pg,fontSize:11,color:C.p,fontWeight:600}}>💡 {v.accion}</div>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {seccionAbierta === "filtros" && (
+        <div>
+          <div style={{padding:16,borderRadius:12,background:C.pg,border:"1px solid "+C.bd,marginBottom:16}}>
+            <p style={{color:C.t,fontSize:13,margin:0,lineHeight:"1.6"}}>La app tiene <b>3 tipos de filtros</b> que se pueden combinar.</p>
+          </div>
+          {filtros.map(function(f,i){
+            return (
+              <div key={i} style={{padding:18,borderRadius:12,background:C.sf,border:"1px solid "+C.bd,marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+                <div style={{color:C.t,fontSize:14,fontWeight:700,marginBottom:6,fontFamily:"'DM Sans',sans-serif"}}>{f.tipo}</div>
+                <div style={{color:C.p,fontSize:11,fontWeight:600,marginBottom:8}}>📍 {f.donde}</div>
+                <p style={{color:C.tm,fontSize:12,lineHeight:"1.6",margin:"0 0 10px 0"}}>{f.desc}</p>
+                {f.permite && (
+                  <div style={{paddingLeft:12,borderLeft:"2px solid "+C.bd}}>
+                    {f.permite.map(function(p,j){
+                      return <div key={j} style={{fontSize:12,color:C.tm,marginBottom:4,lineHeight:"1.5"}}>• {p}</div>;
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          <div style={{padding:14,borderRadius:10,background:"rgba(217,119,6,0.08)",border:"1px solid rgba(217,119,6,0.2)",marginTop:10}}>
+            <div style={{color:C.ac,fontSize:12,fontWeight:700,marginBottom:4}}>⚠️ Importante</div>
+            <p style={{color:C.tm,fontSize:11,margin:0,lineHeight:"1.6"}}>Cuando activas el <b>Filtro Maestro</b>, TODAS las vistas solo muestran los datos filtrados. Los filtros de Pills se aplican SOBRE lo que ya filtró el maestro.</p>
+          </div>
+        </div>
+      )}
+
+      {seccionAbierta === "exportar" && (
+        <div>
+          <div style={{padding:16,borderRadius:12,background:C.pg,border:"1px solid "+C.bd,marginBottom:16}}>
+            <p style={{color:C.t,fontSize:13,margin:0,lineHeight:"1.6"}}>Hay <b>4 tipos de exportación</b>. Todas incluyen marca de agua.</p>
+          </div>
+          {exportar.map(function(e,i){
+            return (
+              <div key={i} style={{padding:18,borderRadius:12,background:C.sf,border:"1px solid "+C.bd,marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+                <div style={{color:C.t,fontSize:14,fontWeight:700,marginBottom:6,fontFamily:"'DM Sans',sans-serif"}}>{e.que}</div>
+                {e.donde && <div style={{color:C.p,fontSize:11,fontWeight:600,marginBottom:8}}>📍 {e.donde}</div>}
+                <p style={{color:C.tm,fontSize:12,lineHeight:"1.6",margin:"0 0 10px 0"}}>{e.contiene}</p>
+                {e.modos && (
+                  <div style={{paddingLeft:12,borderLeft:"2px solid "+C.bd}}>
+                    {e.modos.map(function(m,j){
+                      return <div key={j} style={{fontSize:12,color:C.tm,marginBottom:4,lineHeight:"1.5"}}>{m}</div>;
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {seccionAbierta === "editable" && (
+        <div>
+          <div style={{padding:16,borderRadius:12,background:C.pg,border:"1px solid "+C.bd,marginBottom:16}}>
+            <p style={{color:C.t,fontSize:13,margin:0,lineHeight:"1.6"}}>La app es una <b>herramienta de análisis</b>. Solo los <b>parámetros de las políticas</b> son editables. Los datos son de solo lectura.</p>
+          </div>
+          {editable.map(function(e,i){
+            return (
+              <div key={i} style={{padding:18,borderRadius:12,background:C.sf,border:"1px solid "+C.bd,marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+                <div style={{color:C.t,fontSize:14,fontWeight:700,marginBottom:6,fontFamily:"'DM Sans',sans-serif"}}>{e.area}</div>
+                {e.donde && <div style={{color:C.p,fontSize:11,fontWeight:600,marginBottom:10}}>📍 {e.donde}</div>}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                  <div style={{padding:10,borderRadius:8,background:"rgba(26,122,46,0.06)",border:"1px solid rgba(26,122,46,0.2)"}}>
+                    <div style={{fontSize:11,fontWeight:700,color:C.p,marginBottom:6}}>✅ Sí Editable</div>
+                    {e.si.map(function(item,j){
+                      return <div key={j} style={{fontSize:11,color:C.tm,marginBottom:3,lineHeight:"1.5"}}>• {item}</div>;
+                    })}
+                  </div>
+                  {e.no && (
+                    <div style={{padding:10,borderRadius:8,background:"rgba(225,29,72,0.06)",border:"1px solid rgba(225,29,72,0.2)"}}>
+                      <div style={{fontSize:11,fontWeight:700,color:C.dg,marginBottom:6}}>❌ No Editable</div>
+                      {e.no.map(function(item,j){
+                        return <div key={j} style={{fontSize:11,color:C.tm,marginBottom:3,lineHeight:"1.5"}}>• {item}</div>;
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {seccionAbierta === "politicas" && (
+        <div>
+          <div style={{padding:16,borderRadius:12,background:C.pg,border:"1px solid "+C.bd,marginBottom:16}}>
+            <p style={{color:C.t,fontSize:13,margin:0,lineHeight:"1.6"}}>La app evalúa <b>9 políticas</b> organizadas en 3 niveles: diarias, semanales y mensuales.</p>
+          </div>
+          {politicas.map(function(p){
+            return (
+              <div key={p.num} style={{padding:18,borderRadius:12,background:C.sf,border:"1px solid "+C.bd,marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,flexWrap:"wrap"}}>
+                  <div style={{width:36,height:36,borderRadius:9,background:C.p,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:9,fontWeight:800,lineHeight:1}}>
+                    <div>POL</div><div style={{fontSize:13}}>{p.num}</div>
+                  </div>
+                  <div style={{flex:1,minWidth:200}}>
+                    <div style={{color:C.t,fontSize:14,fontWeight:700,fontFamily:"'DM Sans',sans-serif"}}>{p.nombre}</div>
+                    <div style={{color:C.td,fontSize:11}}>Sigla: <b>{p.sigla}</b> · {p.nivel} · {p.aplica}</div>
+                  </div>
+                </div>
+                <p style={{color:C.tm,fontSize:12,lineHeight:"1.6",margin:"0 0 10px 0"}}>{p.desc}</p>
+                <div style={{padding:10,borderRadius:8,background:C.sa,border:"1px solid "+C.bd,marginBottom:6}}>
+                  <div style={{fontSize:10,fontWeight:700,color:C.td,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Fórmula</div>
+                  <div style={{fontSize:12,color:C.t,fontFamily:"monospace"}}>{p.formula}</div>
+                </div>
+                <div style={{padding:10,borderRadius:8,background:C.pg,border:"1px solid "+C.bd}}>
+                  <div style={{fontSize:10,fontWeight:700,color:C.p,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Valores por defecto</div>
+                  <div style={{fontSize:12,color:C.tm}}>{p.defaults}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {seccionAbierta === "conceptos" && (
+        <div>
+          <div style={{padding:16,borderRadius:12,background:C.pg,border:"1px solid "+C.bd,marginBottom:16}}>
+            <p style={{color:C.t,fontSize:13,margin:0,lineHeight:"1.6"}}>Glosario de términos usados en la app.</p>
+          </div>
+          {conceptos.map(function(c,i){
+            return (
+              <div key={i} style={{padding:14,borderRadius:10,background:C.sf,border:"1px solid "+C.bd,marginBottom:8,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+                <div style={{color:C.t,fontSize:13,fontWeight:700,marginBottom:4,fontFamily:"'DM Sans',sans-serif"}}>{c.t}</div>
+                <p style={{color:C.tm,fontSize:12,lineHeight:"1.6",margin:0}}>{c.d}</p>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {seccionAbierta === "flujo" && (
+        <div>
+          <div style={{padding:16,borderRadius:12,background:C.pg,border:"1px solid "+C.bd,marginBottom:16}}>
+            <p style={{color:C.t,fontSize:13,margin:0,lineHeight:"1.6"}}>Secuencia recomendada para aprovechar la app al máximo.</p>
+          </div>
+          {flujo.map(function(f,i){
+            return (
+              <div key={i} style={{padding:18,borderRadius:12,background:C.sf,border:"1px solid "+C.bd,marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,0.04)",display:"flex",gap:14,alignItems:"flex-start"}}>
+                <div style={{width:40,height:40,borderRadius:"50%",background:"linear-gradient(135deg,#1a7a2e,#34d399)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:16,fontWeight:800,flexShrink:0,boxShadow:"0 2px 8px rgba(26,122,46,0.25)"}}>{f.paso}</div>
+                <div style={{flex:1}}>
+                  <div style={{color:C.t,fontSize:14,fontWeight:700,marginBottom:4,fontFamily:"'DM Sans',sans-serif"}}>{f.t}</div>
+                  <p style={{color:C.tm,fontSize:12,lineHeight:"1.6",margin:0}}>{f.d}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {seccionAbierta === "faq" && (
+        <div>
+          <div style={{padding:16,borderRadius:12,background:C.pg,border:"1px solid "+C.bd,marginBottom:16}}>
+            <p style={{color:C.t,fontSize:13,margin:0,lineHeight:"1.6"}}>Respuestas a las dudas más comunes.</p>
+          </div>
+          {faq.map(function(item,i){
+            return (
+              <div key={i} style={{padding:16,borderRadius:12,background:C.sf,border:"1px solid "+C.bd,marginBottom:8,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+                <div style={{color:C.t,fontSize:13,fontWeight:700,marginBottom:6,fontFamily:"'DM Sans',sans-serif"}}>❓ {item.q}</div>
+                <p style={{color:C.tm,fontSize:12,lineHeight:"1.6",margin:"0 0 0 18px"}}>{item.a}</p>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
