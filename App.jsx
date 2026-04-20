@@ -305,7 +305,7 @@ function procBase(rows) {
     
     // -- Detalle de breaks (para tabla y politicas) --
     const breakDetalle = breakPairs.map((b) => {
-      const tipoLabel = b.tipo === "BREAK_CORTO" ? "Corto" : b.tipo === "TP_LEGAL" ? "TP Legal" : "TP Ilegal";
+      const tipoLabel = b.tipo === "BREAK_CORTO" ? "Corto" : b.tipo === "TP_LEGAL" ? "TP Legal" : b.tipo === "BREAK_INCOMPLETO" ? "Incompleto" : "TP Ilegal";
       return fmtH(b.salidaH) + "-" + fmtH(b.llegadaH) + " (" + b.duracionMin + "min " + tipoLabel + ")";
     }).join(" | ");
     
@@ -3821,11 +3821,12 @@ function App() {
 
   /* Actualizar tema global en cada render */
 
-  /* Limpiar BREAK_PAIRS para serializar */
+  /* Mantener BREAK_PAIRS al serializar para evitar reconstrucción frágil con regex.
+     El peso extra es mínimo (~50 bytes por empleado/día) y garantiza datos intactos. */
   var limpiarMarc = function(marc) {
     return marc.map(function(m) {
       var c = {};
-      for (var k in m) { if (k !== "BREAK_PAIRS") c[k] = m[k]; }
+      for (var k in m) { c[k] = m[k]; }
       return c;
     });
   };
@@ -3911,21 +3912,26 @@ function App() {
             var json = JSON.parse(text);
             if (json._type === "seguimiento_memory" || json._type === "staffpulse_memory") {
               // Normalizar sedes y reconstruir BREAK_PAIRS al cargar desde memoria
+              var reconstructWarnings = 0;
               var marcNorm = (json.marcaciones||[]).map(function(m){ var c=Object.assign({},m); if(c.DEPENDENCIA) c.DEPENDENCIA=normSede(c.DEPENDENCIA);
                 if (!c.BREAK_PAIRS && c.BREAK_DETALLE) {
                   c.BREAK_PAIRS = c.BREAK_DETALLE.split(" | ").map(function(seg) {
                     var match = seg.match(/(\d+):(\d+)-(\d+):(\d+)\s*\((\d+)min\s*(.*?)\)/);
-                    if (!match) return null;
+                    if (!match) { reconstructWarnings++; return null; }
                     var sH = parseInt(match[1]) + parseInt(match[2])/60;
                     var lH = parseInt(match[3]) + parseInt(match[4])/60;
                     var dur = parseInt(match[5]);
                     var tipoStr = match[6].trim();
-                    var tipo = tipoStr === "Corto" ? "BREAK_CORTO" : tipoStr === "TP Legal" ? "TP_LEGAL" : "TP_ILEGAL";
+                    var tipo = tipoStr === "Corto" ? "BREAK_CORTO" : tipoStr === "TP Legal" ? "TP_LEGAL" : tipoStr === "Incompleto" ? "BREAK_INCOMPLETO" : "TP_ILEGAL";
                     return { salidaH:sH, llegadaH:lH, duracionMin:dur, tipo:tipo };
                   }).filter(Boolean);
                 }
                 if (!c.BREAK_PAIRS) c.BREAK_PAIRS = [];
                 return c; });
+              if (reconstructWarnings > 0) {
+                console.warn("BREAK_PAIRS reconstruction: " + reconstructWarnings + " segments failed to parse");
+                setFS("⚠️ Memoria cargada con advertencias: " + reconstructWarnings + " breaks no se pudieron reconstruir. Los cálculos de políticas pueden estar incompletos. Recomendamos cargar el Excel original.");
+              }
               var factNorm = (json.facturas||[]).map(function(f){ var c=Object.assign({},f); if(c.sede) c.sede=normSede(c.sede); return c; });
               setData({marc:marcNorm,fact:factNorm});
               setFS("Memoria cargada: " + (json.marcaciones?json.marcaciones.length:0) + " registros");
