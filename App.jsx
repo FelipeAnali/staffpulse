@@ -839,6 +839,14 @@ function InfoTip({ text, children }) {
 function HelpButton({ view }) {
   var _o = useState(false), open = _o[0], setOpen = _o[1];
 
+  // Cerrar con ESC
+  useEffect(function() {
+    if (!open) return;
+    var handler = function(e) { if (e.key === "Escape") setOpen(false); };
+    window.addEventListener("keydown", handler);
+    return function() { window.removeEventListener("keydown", handler); };
+  }, [open]);
+
   var guides = {
     dashboard: {
       t: "Dashboard",
@@ -959,6 +967,41 @@ function HelpButton({ view }) {
   var guide = guides[view];
   if (!guide) return null;
 
+  var modalContent = open ? (
+    <div onClick={function(){setOpen(false);}} style={{position:"fixed",inset:0,zIndex:99999,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div onClick={function(e){e.stopPropagation();}} style={{background:C.sf,borderRadius:18,width:"100%",maxWidth:500,maxHeight:"85vh",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 24px 60px rgba(0,0,0,0.3)",border:"1px solid "+C.bd}}>
+        <div style={{padding:"18px 22px",background:"linear-gradient(135deg,#0f1f13,#1a7a2e)",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+          <div>
+            <div style={{fontSize:10,color:"#86b394",fontWeight:700,textTransform:"uppercase",letterSpacing:"1px",marginBottom:2}}>Guía Rápida</div>
+            <div style={{color:"#f0fdf4",fontSize:17,fontWeight:800,fontFamily:"'DM Sans',sans-serif"}}>{guide.t}</div>
+          </div>
+          <button onClick={function(){setOpen(false);}} style={{width:32,height:32,borderRadius:8,background:"rgba(255,255,255,0.15)",border:"none",color:"#fff",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontWeight:700}}>✕</button>
+        </div>
+        <div style={{padding:"20px 22px",overflowY:"auto",flex:1}}>
+          <div style={{marginBottom:18}}>
+            <div style={{fontSize:11,color:C.td,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:10}}>📋 Pasos</div>
+            {guide.pasos.map(function(p,i){
+              return (
+                <div key={i} style={{display:"flex",gap:10,marginBottom:10,alignItems:"flex-start"}}>
+                  <div style={{minWidth:22,height:22,borderRadius:"50%",background:C.p,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,flexShrink:0}}>{i+1}</div>
+                  <div style={{fontSize:12,color:C.t,lineHeight:1.6}}>{p}</div>
+                </div>
+              );
+            })}
+          </div>
+          {guide.tips && (
+            <div style={{padding:12,borderRadius:10,background:"rgba(217,119,6,0.07)",border:"1px solid rgba(217,119,6,0.2)"}}>
+              <div style={{fontSize:11,color:C.ac,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>💡 Tips</div>
+              {guide.tips.map(function(t,i){
+                return <div key={i} style={{fontSize:12,color:C.tm,lineHeight:1.6,marginBottom:5}}>• {t}</div>;
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   return (
     <>
       <button onClick={function(){setOpen(true);}}
@@ -966,40 +1009,7 @@ function HelpButton({ view }) {
         style={{width:32,height:32,borderRadius:"50%",background:"rgba(26,122,46,0.08)",border:"1.5px solid "+C.bd,color:C.p,fontSize:14,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s",fontFamily:"'DM Sans',sans-serif"}}
         onMouseEnter={function(e){e.currentTarget.style.background=C.p;e.currentTarget.style.color="#fff";e.currentTarget.style.borderColor=C.p;}}
         onMouseLeave={function(e){e.currentTarget.style.background="rgba(26,122,46,0.08)";e.currentTarget.style.color=C.p;e.currentTarget.style.borderColor=C.bd;}}>?</button>
-      {open && (
-        <div onClick={function(){setOpen(false);}} style={{position:"fixed",inset:0,zIndex:9998,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-          <div onClick={function(e){e.stopPropagation();}} style={{background:C.sf,borderRadius:18,width:"100%",maxWidth:500,maxHeight:"85vh",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 24px 60px rgba(0,0,0,0.3)",border:"1px solid "+C.bd}}>
-            <div style={{padding:"18px 22px",background:"linear-gradient(135deg,#0f1f13,#1a7a2e)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <div>
-                <div style={{fontSize:10,color:"#86b394",fontWeight:700,textTransform:"uppercase",letterSpacing:"1px",marginBottom:2}}>Guía Rápida</div>
-                <div style={{color:"#f0fdf4",fontSize:17,fontWeight:800,fontFamily:"'DM Sans',sans-serif"}}>{guide.t}</div>
-              </div>
-              <button onClick={function(){setOpen(false);}} style={{width:30,height:30,borderRadius:8,background:"rgba(255,255,255,0.12)",border:"none",color:"#fff",fontSize:15,cursor:"pointer"}}>✕</button>
-            </div>
-            <div style={{padding:"20px 22px",overflowY:"auto",flex:1}}>
-              <div style={{marginBottom:18}}>
-                <div style={{fontSize:11,color:C.td,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:10}}>📋 Pasos</div>
-                {guide.pasos.map(function(p,i){
-                  return (
-                    <div key={i} style={{display:"flex",gap:10,marginBottom:10,alignItems:"flex-start"}}>
-                      <div style={{minWidth:22,height:22,borderRadius:"50%",background:C.p,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800}}>{i+1}</div>
-                      <div style={{fontSize:12,color:C.t,lineHeight:1.6}}>{p}</div>
-                    </div>
-                  );
-                })}
-              </div>
-              {guide.tips && (
-                <div style={{padding:12,borderRadius:10,background:"rgba(217,119,6,0.07)",border:"1px solid rgba(217,119,6,0.2)"}}>
-                  <div style={{fontSize:11,color:C.ac,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>💡 Tips</div>
-                  {guide.tips.map(function(t,i){
-                    return <div key={i} style={{fontSize:12,color:C.tm,lineHeight:1.6,marginBottom:5}}>• {t}</div>;
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {open && ReactDOM.createPortal(modalContent, document.body)}
     </>
   );
 }

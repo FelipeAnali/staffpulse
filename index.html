@@ -1194,6 +1194,18 @@ function HelpButton(_ref5) {
   var _o = useState(false),
     open = _o[0],
     setOpen = _o[1];
+
+  // Cerrar con ESC
+  useEffect(function () {
+    if (!open) return;
+    var handler = function handler(e) {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", handler);
+    return function () {
+      window.removeEventListener("keydown", handler);
+    };
+  }, [open]);
   var guides = {
     dashboard: {
       t: "Dashboard",
@@ -1242,45 +1254,14 @@ function HelpButton(_ref5) {
   };
   var guide = guides[view];
   if (!guide) return null;
-  return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
-    onClick: function onClick() {
-      setOpen(true);
-    },
-    title: "Gu\xEDa r\xE1pida",
-    style: {
-      width: 32,
-      height: 32,
-      borderRadius: "50%",
-      background: "rgba(26,122,46,0.08)",
-      border: "1.5px solid " + C.bd,
-      color: C.p,
-      fontSize: 14,
-      fontWeight: 800,
-      cursor: "pointer",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      transition: "all 0.2s",
-      fontFamily: "'DM Sans',sans-serif"
-    },
-    onMouseEnter: function onMouseEnter(e) {
-      e.currentTarget.style.background = C.p;
-      e.currentTarget.style.color = "#fff";
-      e.currentTarget.style.borderColor = C.p;
-    },
-    onMouseLeave: function onMouseLeave(e) {
-      e.currentTarget.style.background = "rgba(26,122,46,0.08)";
-      e.currentTarget.style.color = C.p;
-      e.currentTarget.style.borderColor = C.bd;
-    }
-  }, "?"), open && /*#__PURE__*/React.createElement("div", {
+  var modalContent = open ? /*#__PURE__*/React.createElement("div", {
     onClick: function onClick() {
       setOpen(false);
     },
     style: {
       position: "fixed",
       inset: 0,
-      zIndex: 9998,
+      zIndex: 99999,
       background: "rgba(0,0,0,0.55)",
       display: "flex",
       alignItems: "center",
@@ -1309,7 +1290,8 @@ function HelpButton(_ref5) {
       background: "linear-gradient(135deg,#0f1f13,#1a7a2e)",
       display: "flex",
       justifyContent: "space-between",
-      alignItems: "center"
+      alignItems: "center",
+      flexShrink: 0
     }
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     style: {
@@ -1332,14 +1314,19 @@ function HelpButton(_ref5) {
       setOpen(false);
     },
     style: {
-      width: 30,
-      height: 30,
+      width: 32,
+      height: 32,
       borderRadius: 8,
-      background: "rgba(255,255,255,0.12)",
+      background: "rgba(255,255,255,0.15)",
       border: "none",
       color: "#fff",
-      fontSize: 15,
-      cursor: "pointer"
+      fontSize: 16,
+      cursor: "pointer",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      flexShrink: 0,
+      fontWeight: 700
     }
   }, "\u2715")), /*#__PURE__*/React.createElement("div", {
     style: {
@@ -1380,7 +1367,8 @@ function HelpButton(_ref5) {
         alignItems: "center",
         justifyContent: "center",
         fontSize: 11,
-        fontWeight: 800
+        fontWeight: 800,
+        flexShrink: 0
       }
     }, i + 1), /*#__PURE__*/React.createElement("div", {
       style: {
@@ -1415,7 +1403,39 @@ function HelpButton(_ref5) {
         marginBottom: 5
       }
     }, "\u2022 ", t);
-  }))))));
+  }))))) : null;
+  return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
+    onClick: function onClick() {
+      setOpen(true);
+    },
+    title: "Gu\xEDa r\xE1pida",
+    style: {
+      width: 32,
+      height: 32,
+      borderRadius: "50%",
+      background: "rgba(26,122,46,0.08)",
+      border: "1.5px solid " + C.bd,
+      color: C.p,
+      fontSize: 14,
+      fontWeight: 800,
+      cursor: "pointer",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      transition: "all 0.2s",
+      fontFamily: "'DM Sans',sans-serif"
+    },
+    onMouseEnter: function onMouseEnter(e) {
+      e.currentTarget.style.background = C.p;
+      e.currentTarget.style.color = "#fff";
+      e.currentTarget.style.borderColor = C.p;
+    },
+    onMouseLeave: function onMouseLeave(e) {
+      e.currentTarget.style.background = "rgba(26,122,46,0.08)";
+      e.currentTarget.style.color = C.p;
+      e.currentTarget.style.borderColor = C.bd;
+    }
+  }, "?"), open && ReactDOM.createPortal(modalContent, document.body));
 }
 function Tip(props) {
   if (!props.active || !props.payload || !props.payload.length) return null;
