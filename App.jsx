@@ -817,6 +817,193 @@ function Pill(props) {
   );
 }
 
+// Componente reutilizable: tooltip de información al hacer hover
+function InfoTip({ text, children }) {
+  var _h = useState(false), hover = _h[0], setHover = _h[1];
+  return (
+    <span style={{position:"relative",display:"inline-flex",alignItems:"center",gap:4,cursor:"help"}}
+      onMouseEnter={function(){setHover(true);}} onMouseLeave={function(){setHover(false);}}>
+      {children}
+      <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:14,height:14,borderRadius:"50%",background:"rgba(122,147,130,0.2)",color:"#7a9382",fontSize:9,fontWeight:700,lineHeight:1}}>?</span>
+      {hover && (
+        <span style={{position:"absolute",bottom:"calc(100% + 8px)",left:"50%",transform:"translateX(-50%)",background:"rgba(8,18,10,0.95)",color:"#fff",padding:"8px 12px",borderRadius:8,fontSize:11,lineHeight:1.5,whiteSpace:"normal",minWidth:180,maxWidth:260,zIndex:10000,boxShadow:"0 8px 24px rgba(0,0,0,0.3)",fontWeight:400,pointerEvents:"none"}}>
+          {text}
+          <span style={{position:"absolute",top:"100%",left:"50%",transform:"translateX(-50%)",width:0,height:0,borderLeft:"6px solid transparent",borderRight:"6px solid transparent",borderTop:"6px solid rgba(8,18,10,0.95)"}} />
+        </span>
+      )}
+    </span>
+  );
+}
+
+// Componente botón "?" que abre una guía rápida por vista
+function HelpButton({ view }) {
+  var _o = useState(false), open = _o[0], setOpen = _o[1];
+
+  var guides = {
+    dashboard: {
+      t: "Dashboard",
+      pasos: [
+        "Mira la curva: las barras son personal presente por hora, la línea es ventas.",
+        "Usa los filtros (Sede, Mes, Clase, etc.) para profundizar en un segmento específico.",
+        "Las tarjetas arriba muestran métricas clave. Pasa el mouse sobre el ícono (?) para ver qué mide cada una.",
+        "Activa 'Tabla' o 'Ambos' para ver los datos detallados por empleado/día.",
+        "La venta total respeta todos los filtros activos."
+      ],
+      tips: [
+        "Si quieres ver una sede específica: usa 'Filtro Maestro' arriba para que aplique a toda la app.",
+        "La Quincena Retail son los días de alto flujo (1-3, 15-17, fin de mes)."
+      ]
+    },
+    resumen: {
+      t: "Resumen Ejecutivo",
+      pasos: [
+        "El banner superior compara el mes actual con el anterior: cumplimiento, empleados afectados y venta.",
+        "Si hay alertas (🔔), revisa qué políticas cambiaron más de 3% respecto al mes anterior.",
+        "El círculo grande muestra el cumplimiento general de las 9 políticas.",
+        "'Sedes Críticas' son aquellas con cumplimiento <70%.",
+        "El ranking al final ordena todas las sedes de peor a mejor cumplimiento."
+      ],
+      tips: [
+        "Si una sede está al 0%, significa que todos los empleados violaron la mayoría de políticas.",
+        "Para ver qué política específica está mal, ve a 'Políticas'."
+      ]
+    },
+    policies: {
+      t: "Políticas",
+      pasos: [
+        "Cada tarjeta es una política (POL 1 a 9) con su % de cumplimiento.",
+        "Verde ≥90%, Amarillo 70-89%, Rojo <70%.",
+        "Haz clic en una tarjeta para ver los empleados que violaron esa política.",
+        "Usa 'Configurar Parámetros' para ajustar los umbrales (horas, breaks, etc.).",
+        "'Generar Informe' descarga un reporte PDF con firma. 'Exportar Excel' genera un archivo con tablas coloreadas."
+      ],
+      tips: [
+        "Los parámetros configurados se aplican también a Riesgo y Tendencia.",
+        "Si ajustas parámetros, todos los cálculos se actualizan en tiempo real."
+      ]
+    },
+    riesgo: {
+      t: "Riesgo",
+      pasos: [
+        "Lista de empleados ordenados por cantidad total de infracciones.",
+        "Los chips de colores muestran qué políticas violó cada empleado.",
+        "Filtra por Política específica para ver el top de infractores de esa norma.",
+        "Haz clic en un empleado para ver el detalle en Auditoría."
+      ],
+      tips: [
+        "Útil para identificar casos recurrentes que requieren acción de RH.",
+        "Un empleado con muchas infracciones acumuladas indica un problema sistémico, no esporádico."
+      ]
+    },
+    tendencia: {
+      t: "Tendencia",
+      pasos: [
+        "Gráfico de líneas con la evolución mes a mes del cumplimiento de cada política.",
+        "Filtra por Sede para ver la tendencia específica de una tienda.",
+        "El cálculo puede tomar varios segundos (especialmente con muchos datos)."
+      ],
+      tips: [
+        "Si una política baja mes a mes, hay un problema creciente que hay que atender.",
+        "Si sube, el equipo está mejorando."
+      ]
+    },
+    eficiencia: {
+      t: "Eficiencia",
+      pasos: [
+        "Muestra la relación entre personal presente y ventas generadas por hora.",
+        "Eficiencia alta = pocas personas generando muchas ventas.",
+        "Eficiencia baja = muchas personas con pocas ventas (posible sobredotación).",
+        "El ranking identifica qué sedes son más/menos eficientes."
+      ],
+      tips: [
+        "Útil para decidir ajustes de turnos: ¿tienes demasiado personal en horas bajas?",
+        "Compara entre sedes para replicar mejores prácticas."
+      ]
+    },
+    auditoria: {
+      t: "Auditoría",
+      pasos: [
+        "Busca un empleado por nombre, ID o cargo.",
+        "Haz clic en el empleado para abrir su ficha detallada.",
+        "Dentro, selecciona un día para ver: entrada, breaks, salida y qué políticas se evaluaron.",
+        "Cada política muestra si cumplió ✓ o violó ✗ con explicación paso a paso."
+      ],
+      tips: [
+        "Ideal para revisar casos específicos antes de una conversación con RH o el empleado.",
+        "Te muestra el cálculo exacto: si viola POL 3 porque trabajó 9.5h > 9h tope."
+      ]
+    },
+    upload: {
+      t: "Cargar Datos",
+      pasos: [
+        "Haz clic en el área punteada o arrastra los archivos allí.",
+        "La app detecta automáticamente el tipo (marcaciones, facturas o memoria JSON).",
+        "Puedes cargar varios archivos a la vez.",
+        "Al terminar, ve a cualquier vista para empezar a analizar."
+      ],
+      tips: [
+        "Si ya trabajaste antes con los datos, usa Exportar Memoria (.json) para no subir Excel de nuevo.",
+        "El proceso puede tomar 30s-2min dependiendo del tamaño del archivo."
+      ]
+    },
+    rules: {
+      t: "Manual",
+      pasos: [
+        "Navega por las 8 secciones usando las pestañas de arriba.",
+        "Cada sección explica un aspecto: vistas, filtros, exportación, políticas, conceptos, flujo, FAQs.",
+        "Lee 'Flujo de Trabajo' si es tu primera vez usando la app."
+      ]
+    }
+  };
+
+  var guide = guides[view];
+  if (!guide) return null;
+
+  return (
+    <>
+      <button onClick={function(){setOpen(true);}}
+        title="Guía rápida"
+        style={{width:32,height:32,borderRadius:"50%",background:"rgba(26,122,46,0.08)",border:"1.5px solid "+C.bd,color:C.p,fontSize:14,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s",fontFamily:"'DM Sans',sans-serif"}}
+        onMouseEnter={function(e){e.currentTarget.style.background=C.p;e.currentTarget.style.color="#fff";e.currentTarget.style.borderColor=C.p;}}
+        onMouseLeave={function(e){e.currentTarget.style.background="rgba(26,122,46,0.08)";e.currentTarget.style.color=C.p;e.currentTarget.style.borderColor=C.bd;}}>?</button>
+      {open && (
+        <div onClick={function(){setOpen(false);}} style={{position:"fixed",inset:0,zIndex:9998,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div onClick={function(e){e.stopPropagation();}} style={{background:C.sf,borderRadius:18,width:"100%",maxWidth:500,maxHeight:"85vh",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 24px 60px rgba(0,0,0,0.3)",border:"1px solid "+C.bd}}>
+            <div style={{padding:"18px 22px",background:"linear-gradient(135deg,#0f1f13,#1a7a2e)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:10,color:"#86b394",fontWeight:700,textTransform:"uppercase",letterSpacing:"1px",marginBottom:2}}>Guía Rápida</div>
+                <div style={{color:"#f0fdf4",fontSize:17,fontWeight:800,fontFamily:"'DM Sans',sans-serif"}}>{guide.t}</div>
+              </div>
+              <button onClick={function(){setOpen(false);}} style={{width:30,height:30,borderRadius:8,background:"rgba(255,255,255,0.12)",border:"none",color:"#fff",fontSize:15,cursor:"pointer"}}>✕</button>
+            </div>
+            <div style={{padding:"20px 22px",overflowY:"auto",flex:1}}>
+              <div style={{marginBottom:18}}>
+                <div style={{fontSize:11,color:C.td,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:10}}>📋 Pasos</div>
+                {guide.pasos.map(function(p,i){
+                  return (
+                    <div key={i} style={{display:"flex",gap:10,marginBottom:10,alignItems:"flex-start"}}>
+                      <div style={{minWidth:22,height:22,borderRadius:"50%",background:C.p,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800}}>{i+1}</div>
+                      <div style={{fontSize:12,color:C.t,lineHeight:1.6}}>{p}</div>
+                    </div>
+                  );
+                })}
+              </div>
+              {guide.tips && (
+                <div style={{padding:12,borderRadius:10,background:"rgba(217,119,6,0.07)",border:"1px solid rgba(217,119,6,0.2)"}}>
+                  <div style={{fontSize:11,color:C.ac,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>💡 Tips</div>
+                  {guide.tips.map(function(t,i){
+                    return <div key={i} style={{fontSize:12,color:C.tm,lineHeight:1.6,marginBottom:5}}>• {t}</div>;
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function Tip(props) {
   if (!props.active || !props.payload || !props.payload.length) return null;
   return (
@@ -1324,14 +1511,14 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
   // -- Tarjetas de stats (dinamicas) --
   const tarjetasStats = [];
   if (hasMarc) {
-    tarjetasStats.push({ l: "Empleados", v: estadisticas.empleados, c: C.p });
-    tarjetasStats.push({ l: "Prom Hrs/Dia", v: estadisticas.promedioHoras, c: C.s });
-    tarjetasStats.push({ l: "Max Pers/Hora", v: estadisticas.maxColaboradores, c: C.ac });
-    tarjetasStats.push({ l: "Dias", v: estadisticas.dias, c: "#8b5cf6" });
+    tarjetasStats.push({ l: "Empleados", v: estadisticas.empleados, c: C.p, info: "Cantidad de empleados únicos con marcaciones en el período seleccionado." });
+    tarjetasStats.push({ l: "Prom Hrs/Dia", v: estadisticas.promedioHoras, c: C.s, info: "Promedio de horas trabajadas por empleado por día." });
+    tarjetasStats.push({ l: "Max Pers/Hora", v: estadisticas.maxColaboradores, c: C.ac, info: "Hora pico de personal: la mayor cantidad de empleados presentes simultáneamente en una franja horaria." });
+    tarjetasStats.push({ l: "Dias", v: estadisticas.dias, c: "#8b5cf6", info: "Cantidad de días con datos en el período seleccionado." });
   }
   if (hasFact) {
-    tarjetasStats.push({ l: "Max Trans/Hora", v: estadisticas.maxTransacciones, c: "#ec4899" });
-    if (estadisticas.ventaTotal > 0) tarjetasStats.push({ l: "Venta Total", v: fmtMoney(estadisticas.ventaTotal), c: "#06b6d4" });
+    tarjetasStats.push({ l: "Max Trans/Hora", v: estadisticas.maxTransacciones, c: "#ec4899", info: "Hora pico de transacciones: mayor número de facturas registradas en una franja horaria." });
+    if (estadisticas.ventaTotal > 0) tarjetasStats.push({ l: "Venta Total", v: fmtMoney(estadisticas.ventaTotal), c: "#06b6d4", info: "Suma total de ventas del período, aplicando los filtros activos. K=miles, M=millones, MM=mil millones, B=billones." });
   }
 
   // -- Filtros visibles (dinamicos) --
@@ -1401,7 +1588,9 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
             onMouseEnter={function(e){e.currentTarget.style.boxShadow="0 4px 16px rgba(0,0,0,0.08)";e.currentTarget.style.transform="translateY(-1px)";}}
             onMouseLeave={function(e){e.currentTarget.style.boxShadow="0 2px 8px rgba(0,0,0,0.04)";e.currentTarget.style.transform="translateY(0)";}}>
             <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:"linear-gradient(90deg,"+s.c+","+s.c+"88)"}} />
-            <div style={{color:C.td,fontSize:10,fontWeight:600,marginBottom:8,marginTop:2,textTransform:"uppercase",letterSpacing:"0.5px",fontFamily:"'DM Sans',sans-serif"}}>{s.l}</div>
+            <div style={{color:C.td,fontSize:10,fontWeight:600,marginBottom:8,marginTop:2,textTransform:"uppercase",letterSpacing:"0.5px",fontFamily:"'DM Sans',sans-serif"}}>
+              {s.info ? <InfoTip text={s.info}>{s.l}</InfoTip> : s.l}
+            </div>
             <div style={{fontSize:28,fontWeight:800,color:s.c,lineHeight:1,fontFamily:"'DM Sans',sans-serif"}}>{s.v}</div>
           </div>
         ))}
@@ -4656,6 +4845,7 @@ function App() {
           </div>
           {/* Acciones */}
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <HelpButton view={view} />
             {has && <div style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",borderRadius:20,
               background:"rgba(26,122,46,0.06)",border:"1px solid "+C.bd}}>
               <span style={{width:6,height:6,borderRadius:"50%",background:"#4ade80",flexShrink:0,
