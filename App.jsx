@@ -223,6 +223,30 @@ function procBase(rows) {
     const tpLegales = breakPairs.filter((b) => b.tipo === "TP_LEGAL");
     const tpIlegales = breakPairs.filter((b) => b.tipo === "TP_ILEGAL");
 
+    // === VALIDACION DE BUENA MARCACION (Pol 9 - BMA) ===
+    // Cuenta marcaciones validas (excluye FALLIDA)
+    const marcacionesValidas = emp.marcaciones.filter(m => m.funcion !== "FALLIDA");
+    const totalMarcas = marcacionesValidas.length;
+    // Si tiene breaks INCOMPLETOS (salida sin llegada) -> mala marcacion
+    const tieneBreakIncompleto = breakPairs.some(b => b.tipo === "BREAK_INCOMPLETO");
+    // Reglas:
+    //  - Numero PAR de marcaciones
+    //  - Minimo 4 marcaciones (1 break o mas)
+    //  - Sin breaks incompletos
+    //  - Con entrada y salida principales detectadas
+    const marcacionOk = (totalMarcas >= 4) && (totalMarcas % 2 === 0) && !tieneBreakIncompleto && entrada !== null && salida !== null;
+    // Razon de la mala marcacion (para el reporte)
+    let marcacionMotivo = "";
+    if (!marcacionOk) {
+      if (totalMarcas === 0) marcacionMotivo = "Sin marcaciones";
+      else if (totalMarcas < 4) marcacionMotivo = totalMarcas + " marcacion(es) - debe tener minimo 4 (con break)";
+      else if (totalMarcas % 2 !== 0) marcacionMotivo = totalMarcas + " marcaciones (impar) - falta una marcacion";
+      else if (tieneBreakIncompleto) marcacionMotivo = "Salida a break sin llegada";
+      else if (entrada === null) marcacionMotivo = "Sin entrada principal";
+      else if (salida === null) marcacionMotivo = "Sin salida principal";
+      else marcacionMotivo = "Marcacion inconsistente";
+    }
+
     const totalBreakCortoMin = breaksCortos.reduce((s, b) => s + b.duracionMin, 0);
     const totalTPMin = todosTP.reduce((s, b) => s + b.duracionMin, 0);
     const totalBreakH = breakPairs.reduce((s, b) => s + b.duracionMin, 0) / 60;
@@ -325,6 +349,10 @@ function procBase(rows) {
       TP_TOTAL_MIN: totalTPMin,
       BREAK_DETALLE: breakDetalle,
       BREAK_PAIRS: breakPairs,
+      // -- Validacion de marcacion (Pol 9 - BMA) --
+      TOTAL_MARCAS: totalMarcas,
+      MARCACION_OK: marcacionOk,
+      MARCACION_MOTIVO: marcacionMotivo,
       // -- Compat --
       TURNO_PARTIDO: todosTP.length,
       MES: me, DIA: di, DIA_SEMANA: dsm, SEMANA: sem,
@@ -485,7 +513,7 @@ const PARAMS_DEFAULT = {
   horasExtraMaxSemana: 12,    // Max HE por semana (pol 7, antes pol 8)
 };
 
-/* === DEFINICION DE LAS 8 POLITICAS === */
+/* === DEFINICION DE LAS 9 POLITICAS === */
 const POLITICAS_DEF = [
   { id: "JEX", num: 1, nombre: "Jornadas Extendidas sin Descanso", icono: "!",
     descFn: function(p) { return "Jornada mayor a " + p.jornadaExtendidaHoras + "h con break menor a " + p.breakMinimoMin + "min"; } },
@@ -513,6 +541,8 @@ const POLITICAS_DEF = [
     descFn: function(p) { return "Max " + p.horasExtraMaxSemana + "h extra acumuladas por semana"; } },
   { id: "HED", num: 8, nombre: "HE Diaria (Max por Dia)", icono: "H",
     descFn: function(p) { return "Max " + p.horasExtraMaxDia + "h extra por dia (jornada normal " + p.jornadaNormal + "h)"; } },
+  { id: "BMA", num: 9, nombre: "Buena Marcacion", icono: "M",
+    descFn: function(p) { return "Marcacion completa: par y minimo 4 marcaciones (con break). Filtra dias mal marcados de las demas politicas."; } },
 ];
 
 /* === EVALUACION DE POLITICAS === */
@@ -597,6 +627,15 @@ function evaluarPoliticas(marcaciones, params, sedeFiltro) {
 
     // --- POR DIA ---
     regs.forEach((r) => {
+      // === POL 9 BMA: Buena Marcacion ===
+      if (r.MARCACION_OK === false) {
+        resultados.BMA.violadores.push({
+          ...base, fecha: r.FECHA,
+          detalle: "Mala marcacion: " + (r.MARCACION_MOTIVO || "incompleta") + " | " + (r.BREAK_DETALLE || "sin breaks"),
+          valor: r.TOTAL_MARCAS || 0,
+        });
+        return; // skip resto de politicas para este dia
+      }
       const horas = r.TOTAL_HORAS || 0;
       const horasExtra = Math.max(0, horas - params.jornadaNormal);
       const breakPairs = r.BREAK_PAIRS || [];
@@ -697,9 +736,10 @@ function evaluarPoliticas(marcaciones, params, sedeFiltro) {
       }
     });
 
-    // --- POR SEMANA ---
+    // --- POR SEMANA --- (solo dias con buena marcacion)
+    const regsValidos = regs.filter((r) => r.MARCACION_OK !== false);
     const porSemana = {};
-    regs.forEach((r) => {
+    regsValidos.forEach((r) => {
       const sem = r.SEMANA || "Sin semana";
       if (!porSemana[sem]) porSemana[sem] = [];
       porSemana[sem].push(r);
@@ -732,10 +772,10 @@ function evaluarPoliticas(marcaciones, params, sedeFiltro) {
       }
     });
 
-    // --- POR MES: DOMINGOS ---
+    // --- POR MES: DOMINGOS --- (solo dias bien marcados)
     const domingosPorMes = {};
 
-    regs.forEach((r) => {
+    regsValidos.forEach((r) => {
       if (r.DIA_SEMANA === "Domingo") {
         const mes = r.MES || "Sin mes";
         domingosPorMes[mes] = (domingosPorMes[mes] || 0) + 1;
@@ -2226,6 +2266,16 @@ function PolView({ marc: marcaciones = [], parametros, setParametros, userName }
         const regs = emp.registros;
         const base = { id:emp.id, nombre:emp.nombre, cargo:emp.cargo, sede:emp.sede, seccion:emp.seccion };
         regs.forEach(r => {
+          // === POL 9 BMA: Buena Marcacion ===
+          // Si la marcacion es mala, se reporta y se EXCLUYE del resto de politicas
+          if (r.MARCACION_OK === false) {
+            resultados.BMA.violadores.push({
+              ...base, fecha: r.FECHA,
+              detalle: "Mala marcacion: " + (r.MARCACION_MOTIVO || "incompleta") + " | " + (r.BREAK_DETALLE || "sin breaks"),
+              valor: r.TOTAL_MARCAS || 0,
+            });
+            return; // skip resto de politicas para este dia
+          }
           const horas = r.TOTAL_HORAS||0;
           const horasExtra = Math.max(0,horas-parametros.jornadaNormal);
           const breakPairs = r.BREAK_PAIRS||[];
@@ -2246,9 +2296,8 @@ function PolView({ marc: marcaciones = [], parametros, setParametros, userName }
           tpIlegales.forEach(b => { const sH=Math.floor(b.salidaH)+":"+String(Math.round((b.salidaH%1)*60)).padStart(2,"0"); const lH=Math.floor(b.llegadaH)+":"+String(Math.round((b.llegadaH%1)*60)).padStart(2,"0"); resultados.EBR.violadores.push({...base,fecha:r.FECHA,detalle:"TP ILEGAL: "+b.duracionMin+"min ("+sH+"-"+lH+")",valor:b.duracionMin}); });
           if(horasExtra>parametros.horasExtraMaxDia) resultados.HED.violadores.push({...base,fecha:r.FECHA,detalle:horasExtra.toFixed(1)+"h extra (max "+parametros.horasExtraMaxDia+"h). Total: "+horas.toFixed(1)+"h",valor:horasExtra});
         });
-        // Para politicas SEMANALES y MENSUALES: usar dataset estructural (sin granulares)
-        // Asi un filtro como "solo lunes" no rompe el calculo de HE semanal o domingos del mes
-        const regsCompletos = regsCompletosPorEmp[emp.id] || regs;
+        // Para politicas SEMANALES y MENSUALES: usar dataset estructural (sin granulares) y SOLO dias con buena marcacion
+        const regsCompletos = (regsCompletosPorEmp[emp.id] || regs).filter(r => r.MARCACION_OK !== false);
         const porSemana = {};
         regsCompletos.forEach(r => { const sem=r.SEMANA||"Sin semana"; if(!porSemana[sem])porSemana[sem]=[]; porSemana[sem].push(r); });
         Object.entries(porSemana).forEach(([semana,regsS]) => {
@@ -2450,7 +2499,7 @@ function PolView({ marc: marcaciones = [], parametros, setParametros, userName }
               ? <><span style={{width:10,height:10,borderRadius:"50%",border:"2px solid "+C.p,borderTopColor:"transparent",display:"inline-block",animation:"spin 0.7s linear infinite"}} /><span style={{color:C.p}}>Calculando politicas... {progresoPol}%</span><span style={{width:80,height:4,background:C.bd,borderRadius:2,overflow:"hidden",display:"inline-block",marginLeft:6}}><span style={{width:progresoPol+"%",height:"100%",background:C.p,display:"block",borderRadius:2,transition:"width 0.2s"}} /></span></>
               : polError
               ? <span style={{color:C.dg}}>{polError}</span>
-              : <span>{totalEmpleados} empleados evaluados {polFiltros.sede !== "Todas" ? `en ${polFiltros.sede}` : "en todas las sedes"}{polFiltros.mes !== "Todos" ? ` · ${polFiltros.mes}` : ""}{polFiltros.seccion !== "Todas" ? ` · ${polFiltros.seccion}` : ""}{polFiltros.clase !== "Todas" ? ` · ${polFiltros.clase}` : ""} | 8 politicas activas{hayFiltrosGranulares && <span style={{color:C.ac,marginLeft:8,fontWeight:600}}>· filtros granulares activos (afectan solo Pol 1, 2, 3, 5, 8)</span>}</span>
+              : <span>{totalEmpleados} empleados evaluados {polFiltros.sede !== "Todas" ? `en ${polFiltros.sede}` : "en todas las sedes"}{polFiltros.mes !== "Todos" ? ` · ${polFiltros.mes}` : ""}{polFiltros.seccion !== "Todas" ? ` · ${polFiltros.seccion}` : ""}{polFiltros.clase !== "Todas" ? ` · ${polFiltros.clase}` : ""} | 9 politicas activas{hayFiltrosGranulares && <span style={{color:C.ac,marginLeft:8,fontWeight:600}}>· filtros granulares activos (afectan solo Pol 1, 2, 3, 5, 8)</span>}</span>
             }
           </p>
         </div>
@@ -2802,6 +2851,7 @@ function RulesView() {
     { num:6, sigla:"DBA", nombre:"Domingos Personal Base", desc:"Todo empleado debe tener al menos N domingo(s) libre(s) al mes. Aplica a TODOS los cargos por igual.", formula:"domingos_libres_mes < 1", defaults:"Min domingos libres: 1", nivel:"Por mes", aplica:"Todos los empleados" },
     { num:7, sigla:"HES", nombre:"HE Semanal", desc:"Horas extra acumuladas en una semana no deben superar el límite legal/interno.", formula:"suma_HE_semana > 12h", defaults:"Máx: 12h/semana", nivel:"Por semana", aplica:"Todos los empleados" },
     { num:8, sigla:"HED", nombre:"HE Diaria", desc:"Horas extra en un solo día no deben superar el límite.", formula:"HE_dia > 2h (es decir, jornada > 9h si jornada normal = 7h)", defaults:"Máx: 2h/día", nivel:"Por día", aplica:"Todos los empleados" },
+    { num:9, sigla:"BMA", nombre:"Buena Marcación", desc:"Detecta días con marcación incompleta o impar (ej. 3 marcaciones, salida sin entrada, etc). FILTRO INICIAL: los días reportados aquí se EXCLUYEN automáticamente del resto de políticas, evitando que datos malos contaminen el análisis de horas extra, breaks, etc.", formula:"marcaciones par Y >= 4 (con break) Y sin breaks incompletos Y con entrada+salida", defaults:"Mín. 4 marcaciones (con break) · Patrón par", nivel:"Por día", aplica:"Todos los empleados" },
   ];
 
   const conceptos = [
@@ -3350,7 +3400,7 @@ function RiesgoView({ marc, parametros }) {
   const polLabels = Object.fromEntries(POLITICAS_DEF.map(p => [p.id, "POL "+p.num+" — "+p.nombre]));
   const rankFiltrado = polFiltro==="Todas" ? ranking : ranking.filter(e=>e.pols[polFiltro]>0);
   const maxTotal = rankFiltrado[0]?.total || 1;
-  const COLORES_POL = { JEX:"#dc2626",BRK:"#f59e0b",JXC:"#ef4444",TPE:"#8b5cf6",EBR:"#f97316",DBA:"#0ea5e9",HES:"#6366f1",HED:"#d946ef" };
+  const COLORES_POL = { JEX:"#dc2626",BRK:"#f59e0b",JXC:"#ef4444",TPE:"#8b5cf6",EBR:"#f97316",DBA:"#0ea5e9",HES:"#6366f1",HED:"#d946ef",BMA:"#14b8a6" };
   const NOMBRES_POL = Object.fromEntries(POLITICAS_DEF.map(p => [p.id, "Política "+p.num+": "+p.nombre]));
 
   return (
