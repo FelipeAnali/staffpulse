@@ -2072,8 +2072,15 @@ function InformeView({ politicas, totalEmpleados, sede, mes, parametros, marcaci
 
 function PolView({ marc: marcaciones = [], parametros, setParametros, userName }) {
   const [mostrarConfig, setMostrarConfig] = useState(false);
-  const [sedeSel, setSedeSel] = useState("Todas");
-  const [mesSel, setMesSel] = useState("Todos");
+  const polFiltrosDefault = {
+    sede: "Todas", seccion: "Todas", clase: "Todas", mes: "Todos",
+    dsem: "Todos", semana: "Todas", dia: "Todos", quincena: "Todos"
+  };
+  const [polFiltros, setPolFiltros] = useState(polFiltrosDefault);
+  // Aliases retrocompatibles (usados en titulos, exports, informe)
+  const sedeSel = polFiltros.sede;
+  const mesSel = polFiltros.mes;
+  const setPolFiltro = (campo, valor) => setPolFiltros(f => ({...f, [campo]: valor}));
   const [polSeleccionada, setPolSeleccionada] = useState(null);
   const [mostrarInforme, setMostrarInforme] = useState(false);
   const [busquedaPol, setBusquedaPol] = useState("");
@@ -2082,28 +2089,76 @@ function PolView({ marc: marcaciones = [], parametros, setParametros, userName }
   const [polsParaExcel, setPolsParaExcel] = useState(null); // null = no iniciado
   const VIOL_POR_PAGINA = 30;
 
-  const sedes = useMemo(() => {
-    const s = {};
-    marcaciones.forEach((m) => { if (m.DEPENDENCIA) s[m.DEPENDENCIA] = 1; });
-    return ["Todas", ...Object.keys(s)];
-  }, [marcaciones]);
-
-  const meses = useMemo(() => {
-    const ORDEN = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
-    const s = {};
-    marcaciones.forEach((m) => { if (m.MES) s[m.MES] = 1; });
-    const lista = Object.keys(s).sort((a, b) => ORDEN.indexOf(a.toLowerCase().trim()) - ORDEN.indexOf(b.toLowerCase().trim()));
-    return ["Todos", ...lista];
-  }, [marcaciones]);
-
-  // Marcaciones filtradas por sede Y mes antes de evaluar políticas
-  const marcacionesFiltradas = useMemo(() => {
-    return marcaciones.filter((m) => {
-      if (sedeSel !== "Todas" && m.DEPENDENCIA !== sedeSel) return false;
-      if (mesSel  !== "Todos" && m.MES         !== mesSel)  return false;
-      return true;
+  // Opciones dinámicas de los 8 filtros de Políticas
+  const opcionesPolFiltros = useMemo(() => {
+    const ORDEN_MES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+    const ORDEN_DSEM = ["Lunes","Martes","Miercoles","Miércoles","Jueves","Viernes","Sabado","Sábado","Domingo"];
+    const sets = {sede:{}, seccion:{}, clase:{}, mes:{}, dsem:{}, semana:{}, dia:{}, quincena:{}};
+    marcaciones.forEach(m => {
+      if (m.DEPENDENCIA) sets.sede[m.DEPENDENCIA] = 1;
+      if (m.CENTROCOSTO) sets.seccion[m.CENTROCOSTO] = 1;
+      if (m.CLASE)       sets.clase[m.CLASE] = 1;
+      if (m.MES)         sets.mes[m.MES] = 1;
+      if (m.DIA_SEMANA)  sets.dsem[m.DIA_SEMANA] = 1;
+      if (m.SEMANA)      sets.semana[m.SEMANA] = 1;
+      if (m.DIA)         sets.dia[String(m.DIA)] = 1;
+      if (m.QUINCENA !== undefined && m.QUINCENA !== null) {
+        const q = String(m.QUINCENA).toLowerCase();
+        if (q === "si" || q === "true" || m.QUINCENA === true || m.QUINCENA === 1) sets.quincena["Quincena"] = 1;
+        else sets.quincena["No Quincena"] = 1;
+      }
     });
-  }, [marcaciones, sedeSel, mesSel]);
+    const ord = (arr, comparator) => comparator ? arr.sort(comparator) : arr.sort();
+    return {
+      sedes:    ["Todas",...ord(Object.keys(sets.sede))],
+      secciones:["Todas",...ord(Object.keys(sets.seccion))],
+      clases:   ["Todas",...ord(Object.keys(sets.clase))],
+      meses:    ["Todos",...ord(Object.keys(sets.mes), (a,b)=> ORDEN_MES.indexOf(a.toLowerCase().trim())-ORDEN_MES.indexOf(b.toLowerCase().trim()))],
+      dsems:    ["Todos",...ord(Object.keys(sets.dsem), (a,b)=> ORDEN_DSEM.indexOf(a)-ORDEN_DSEM.indexOf(b))],
+      semanas:  ["Todas",...ord(Object.keys(sets.semana))],
+      dias:     ["Todos",...ord(Object.keys(sets.dia), (a,b)=> Number(a)-Number(b))],
+      quincenas:["Todos",...Object.keys(sets.quincena)],
+    };
+  }, [marcaciones]);
+
+  // Listas legacy (otros lugares las usan por nombre)
+  const sedes = opcionesPolFiltros.sedes;
+  const meses = opcionesPolFiltros.meses;
+
+  // Filtros "estructurales" (no rompen agregaciones por semana/mes): sede, seccion, clase, mes
+  // Filtros "granulares" (rompen agregaciones): dsem, semana, dia, quincena
+  // Aplicamos ambos a politicas DIARIAS, pero solo los estructurales a politicas SEMANA/MES
+  const aplicaEstructurales = (m) => {
+    if (polFiltros.sede    !== "Todas" && m.DEPENDENCIA !== polFiltros.sede)   return false;
+    if (polFiltros.seccion !== "Todas" && m.CENTROCOSTO !== polFiltros.seccion) return false;
+    if (polFiltros.clase   !== "Todas" && m.CLASE       !== polFiltros.clase)   return false;
+    if (polFiltros.mes     !== "Todos" && m.MES         !== polFiltros.mes)     return false;
+    return true;
+  };
+  const aplicaGranulares = (m) => {
+    if (polFiltros.dsem    !== "Todos" && m.DIA_SEMANA  !== polFiltros.dsem)    return false;
+    if (polFiltros.semana  !== "Todas" && m.SEMANA      !== polFiltros.semana)  return false;
+    if (polFiltros.dia     !== "Todos" && String(m.DIA) !== polFiltros.dia)     return false;
+    if (polFiltros.quincena !== "Todos") {
+      const esQuin = (m.QUINCENA === true || m.QUINCENA === 1 || String(m.QUINCENA).toLowerCase() === "si" || String(m.QUINCENA).toLowerCase() === "true");
+      if (polFiltros.quincena === "Quincena" && !esQuin) return false;
+      if (polFiltros.quincena === "No Quincena" && esQuin) return false;
+    }
+    return true;
+  };
+
+  // Set para evaluacion de politicas DIARIAS (todos los filtros aplicados)
+  const marcacionesFiltradas = useMemo(() => {
+    return marcaciones.filter(m => aplicaEstructurales(m) && aplicaGranulares(m));
+  }, [marcaciones, polFiltros]);
+
+  // Set para evaluacion de politicas SEMANA/MES (solo estructurales)
+  const marcacionesFiltradasEstruct = useMemo(() => {
+    return marcaciones.filter(aplicaEstructurales);
+  }, [marcaciones, polFiltros]);
+
+  // Hay filtros granulares activos? Para mostrar aviso en UI
+  const hayFiltrosGranulares = polFiltros.dsem !== "Todos" || polFiltros.semana !== "Todas" || polFiltros.dia !== "Todos" || polFiltros.quincena !== "Todos";
 
   const [resultado, setResultado] = useState({ politicas: [], totalEmpleados: 0 });
   const [calculando, setCalculando] = useState(false);
@@ -2120,7 +2175,16 @@ function PolView({ marc: marcaciones = [], parametros, setParametros, userName }
 
     /* Procesar en chunks asincrónicos para no congelar el navegador */
     const CHUNK = 800;
+    // Dataset 1: para politicas DIARIAS (todos los filtros aplicados)
     const datos = marcacionesFiltradas;
+    // Dataset 2: para politicas SEMANALES/MENSUALES (solo estructurales) - indexado por empleado
+    const regsCompletosPorEmp = {};
+    marcacionesFiltradasEstruct.forEach(m => {
+      const id = m.IDENTIFICACION;
+      if (!regsCompletosPorEmp[id]) regsCompletosPorEmp[id] = [];
+      regsCompletosPorEmp[id].push(m);
+    });
+    // Empleados (lista basada en dataset diario - solo evaluamos quienes aparecen tras todos los filtros)
     const porEmpleado = {};
     datos.forEach(m => {
       const id = m.IDENTIFICACION;
@@ -2150,7 +2214,7 @@ function PolView({ marc: marcaciones = [], parametros, setParametros, userName }
       return { ok: false, motivo: "muy largo" };
     };
     const totalDomingosPorMesGlobal = {};
-    { const fechasDomPorMes = {}; datos.forEach(d => { if(d.DIA_SEMANA==="Domingo"&&d.MES){ if(!fechasDomPorMes[d.MES])fechasDomPorMes[d.MES]={}; fechasDomPorMes[d.MES][d.FECHA]=1; } }); Object.keys(fechasDomPorMes).forEach(mes => { totalDomingosPorMesGlobal[mes] = Math.max(Object.keys(fechasDomPorMes[mes]).length,4); }); }
+    { const fechasDomPorMes = {}; marcacionesFiltradasEstruct.forEach(d => { if(d.DIA_SEMANA==="Domingo"&&d.MES){ if(!fechasDomPorMes[d.MES])fechasDomPorMes[d.MES]={}; fechasDomPorMes[d.MES][d.FECHA]=1; } }); Object.keys(fechasDomPorMes).forEach(mes => { totalDomingosPorMesGlobal[mes] = Math.max(Object.keys(fechasDomPorMes[mes]).length,4); }); }
 
     let idx = 0;
     function processChunk() {
@@ -2182,8 +2246,11 @@ function PolView({ marc: marcaciones = [], parametros, setParametros, userName }
           tpIlegales.forEach(b => { const sH=Math.floor(b.salidaH)+":"+String(Math.round((b.salidaH%1)*60)).padStart(2,"0"); const lH=Math.floor(b.llegadaH)+":"+String(Math.round((b.llegadaH%1)*60)).padStart(2,"0"); resultados.EBR.violadores.push({...base,fecha:r.FECHA,detalle:"TP ILEGAL: "+b.duracionMin+"min ("+sH+"-"+lH+")",valor:b.duracionMin}); });
           if(horasExtra>parametros.horasExtraMaxDia) resultados.HED.violadores.push({...base,fecha:r.FECHA,detalle:horasExtra.toFixed(1)+"h extra (max "+parametros.horasExtraMaxDia+"h). Total: "+horas.toFixed(1)+"h",valor:horasExtra});
         });
+        // Para politicas SEMANALES y MENSUALES: usar dataset estructural (sin granulares)
+        // Asi un filtro como "solo lunes" no rompe el calculo de HE semanal o domingos del mes
+        const regsCompletos = regsCompletosPorEmp[emp.id] || regs;
         const porSemana = {};
-        regs.forEach(r => { const sem=r.SEMANA||"Sin semana"; if(!porSemana[sem])porSemana[sem]=[]; porSemana[sem].push(r); });
+        regsCompletos.forEach(r => { const sem=r.SEMANA||"Sin semana"; if(!porSemana[sem])porSemana[sem]=[]; porSemana[sem].push(r); });
         Object.entries(porSemana).forEach(([semana,regsS]) => {
           const heS = regsS.reduce((s,r)=>s+Math.max(0,(r.TOTAL_HORAS||0)-parametros.jornadaNormal),0);
           const diasTP = regsS.filter(r=>(r.TURNOS_PARTIDOS||r.TURNO_PARTIDO||0)>0).length;
@@ -2191,7 +2258,7 @@ function PolView({ marc: marcaciones = [], parametros, setParametros, userName }
           if(heS>parametros.horasExtraMaxSemana) resultados.HES.violadores.push({...base,fecha:semana,detalle:heS.toFixed(1)+"h extra en semana (max "+parametros.horasExtraMaxSemana+"h)",valor:heS});
         });
         const domingosPorMes = {};
-        regs.forEach(r => { if(r.DIA_SEMANA==="Domingo"){ const mes=r.MES||"Sin mes"; domingosPorMes[mes]=(domingosPorMes[mes]||0)+1; } });
+        regsCompletos.forEach(r => { if(r.DIA_SEMANA==="Domingo"){ const mes=r.MES||"Sin mes"; domingosPorMes[mes]=(domingosPorMes[mes]||0)+1; } });
         Object.entries(domingosPorMes).forEach(([mes,trabajados]) => {
           const totalDom = totalDomingosPorMesGlobal[mes]||4;
           const libres = totalDom - trabajados;
@@ -2215,7 +2282,7 @@ function PolView({ marc: marcaciones = [], parametros, setParametros, userName }
     }
     var t = setTimeout(processChunk, 50);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [marcacionesFiltradas, parametros]);
+  }, [marcacionesFiltradas, marcacionesFiltradasEstruct, parametros]);
 
   const { politicas, totalEmpleados, error: polError } = resultado;
 
@@ -2383,13 +2450,25 @@ function PolView({ marc: marcaciones = [], parametros, setParametros, userName }
               ? <><span style={{width:10,height:10,borderRadius:"50%",border:"2px solid "+C.p,borderTopColor:"transparent",display:"inline-block",animation:"spin 0.7s linear infinite"}} /><span style={{color:C.p}}>Calculando politicas... {progresoPol}%</span><span style={{width:80,height:4,background:C.bd,borderRadius:2,overflow:"hidden",display:"inline-block",marginLeft:6}}><span style={{width:progresoPol+"%",height:"100%",background:C.p,display:"block",borderRadius:2,transition:"width 0.2s"}} /></span></>
               : polError
               ? <span style={{color:C.dg}}>{polError}</span>
-              : <span>{totalEmpleados} empleados evaluados {sedeSel !== "Todas" ? `en ${sedeSel}` : "en todas las sedes"}{mesSel !== "Todos" ? ` · ${mesSel}` : ""} | 9 politicas activas</span>
+              : <span>{totalEmpleados} empleados evaluados {polFiltros.sede !== "Todas" ? `en ${polFiltros.sede}` : "en todas las sedes"}{polFiltros.mes !== "Todos" ? ` · ${polFiltros.mes}` : ""}{polFiltros.seccion !== "Todas" ? ` · ${polFiltros.seccion}` : ""}{polFiltros.clase !== "Todas" ? ` · ${polFiltros.clase}` : ""} | 8 politicas activas{hayFiltrosGranulares && <span style={{color:C.ac,marginLeft:8,fontWeight:600}}>· filtros granulares activos (afectan solo Pol 1, 2, 3, 5, 8)</span>}</span>
             }
           </p>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
-          {sedes.length > 1 && <Pill label="Sede" value={sedeSel} options={sedes} onChange={(v) => { setSedeSel(v); setPolSeleccionada(null); setPaginaPol(0); }} />}
-          {meses.length > 1 && <Pill label="Mes" value={mesSel} options={meses} onChange={(v) => { setMesSel(v); setPolSeleccionada(null); setPaginaPol(0); }} />}
+          {opcionesPolFiltros.sedes.length     > 1 && <Pill label="Sede"     value={polFiltros.sede}     options={opcionesPolFiltros.sedes}     onChange={(v) => { setPolFiltro("sede", v);     setPolSeleccionada(null); setPaginaPol(0); }} />}
+          {opcionesPolFiltros.secciones.length > 1 && <Pill label="Seccion"  value={polFiltros.seccion}  options={opcionesPolFiltros.secciones} onChange={(v) => { setPolFiltro("seccion", v);  setPolSeleccionada(null); setPaginaPol(0); }} />}
+          {opcionesPolFiltros.clases.length    > 1 && <Pill label="Clase"    value={polFiltros.clase}    options={opcionesPolFiltros.clases}    onChange={(v) => { setPolFiltro("clase", v);    setPolSeleccionada(null); setPaginaPol(0); }} />}
+          {opcionesPolFiltros.meses.length     > 1 && <Pill label="Mes"      value={polFiltros.mes}      options={opcionesPolFiltros.meses}     onChange={(v) => { setPolFiltro("mes", v);      setPolSeleccionada(null); setPaginaPol(0); }} />}
+          {opcionesPolFiltros.dsems.length     > 1 && <Pill label="Dia Sem"  value={polFiltros.dsem}     options={opcionesPolFiltros.dsems}     onChange={(v) => { setPolFiltro("dsem", v);     setPolSeleccionada(null); setPaginaPol(0); }} />}
+          {opcionesPolFiltros.semanas.length   > 1 && <Pill label="Semana"   value={polFiltros.semana}   options={opcionesPolFiltros.semanas}   onChange={(v) => { setPolFiltro("semana", v);   setPolSeleccionada(null); setPaginaPol(0); }} />}
+          {opcionesPolFiltros.dias.length      > 1 && <Pill label="Dia"      value={polFiltros.dia}      options={opcionesPolFiltros.dias}      onChange={(v) => { setPolFiltro("dia", v);      setPolSeleccionada(null); setPaginaPol(0); }} />}
+          {opcionesPolFiltros.quincenas.length > 1 && <Pill label="Quincena" value={polFiltros.quincena} options={opcionesPolFiltros.quincenas} onChange={(v) => { setPolFiltro("quincena", v); setPolSeleccionada(null); setPaginaPol(0); }} />}
+          {(polFiltros.sede !== "Todas" || polFiltros.seccion !== "Todas" || polFiltros.clase !== "Todas" || polFiltros.mes !== "Todos" || hayFiltrosGranulares) && (
+            <button onClick={() => { setPolFiltros(polFiltrosDefault); setPolSeleccionada(null); setPaginaPol(0); }}
+              style={{padding:"6px 10px",borderRadius:7,fontSize:11,fontWeight:600,background:"transparent",border:"1px solid "+C.dg,color:C.dg,cursor:"pointer"}}>
+              Limpiar filtros
+            </button>
+          )}
           <button onClick={() => setMostrarConfig(!mostrarConfig)} style={{padding:"6px 12px",borderRadius:7,fontSize:11,fontWeight:500,background:mostrarConfig?C.pg:"transparent",border:"1px solid "+(mostrarConfig?C.p:C.bd),color:mostrarConfig?C.p:C.tm,cursor:"pointer"}}>
             {mostrarConfig ? "Ocultar Parametros" : "Configurar Parametros"}
           </button>
