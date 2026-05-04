@@ -465,39 +465,53 @@ const PARAMS_DEFAULT = {
   jornadaNormal: 7,           // Horas de jornada normal
   jornadaMaxDia: 9,           // Max horas que puede trabajar en un dia (pol 3)
   jornadaExtendidaHoras: 10,  // Umbral para jornada extendida sin descanso (pol 1)
-  breakMinimoMin: 8,          // Break minimo en minutos (pol 2)
-  breakNormalMax: 15,         // Break corto permitido (15min, pol 2 referencia)
-  breakTolerancia: 3,         // Tolerancia adicional sobre el break normal
-  breakMaxPermitido: 45,      // Break corto maximo (>esto = turno partido) (pol 5)
+  breakMinimoMin: 8,          // Break minimo en minutos para detectar simulacion (pol 2)
+  /* === RANGOS DE BREAKS VALIDOS (pol 5) === */
+  break15Target: 15,          // Break corto: target 15 min
+  break15Tolerancia: 2,       // Tolerancia +-2 -> rango 13-17
+  break30Target: 30,          // Break largo: target 30 min
+  break30Tolerancia: 2,       // Tolerancia +-2 -> rango 28-32
+  separacionMinHoras: 2,      // Separacion minima entre 2 breaks (horas de trabajo)
+  /* === LEGACY: se mantienen por retrocompatibilidad pero no se usan en pol 5 === */
+  breakNormalMax: 15,
+  breakTolerancia: 3,
+  breakMaxPermitido: 45,      // Sigue siendo el umbral para distinguir break vs turno partido
   turnoPartidoLegalMin: 170,  // Min para TP legal: 2h50m = 170min
   turnoPartidoMaxSemana: 2,   // Max turnos partidos por semana (pol 4)
   turnoPartidoAplicaCargos: "",
-  domingoMaxSupervisores: 2,  // Max domingos/mes para supervisores (pol 6)
   cargosSupervisor: "SUPERVISOR,COORDINADOR,ADMINISTRADOR",
-  domingoMinDescansoBase: 1,  // Min domingos libres/mes para personal base (pol 7)
-  horasExtraMaxDia: 2,        // Max HE por dia (pol 9)
-  horasExtraMaxSemana: 12,    // Max HE por semana (pol 8)
+  domingoMinDescansoBase: 1,  // Min domingos libres/mes para personal base (pol 6, antes pol 7)
+  horasExtraMaxDia: 2,        // Max HE por dia (pol 8, antes pol 9)
+  horasExtraMaxSemana: 12,    // Max HE por semana (pol 7, antes pol 8)
 };
 
-/* === DEFINICION DE LAS 9 POLITICAS === */
+/* === DEFINICION DE LAS 8 POLITICAS === */
 const POLITICAS_DEF = [
   { id: "JEX", num: 1, nombre: "Jornadas Extendidas sin Descanso", icono: "!",
     descFn: function(p) { return "Jornada mayor a " + p.jornadaExtendidaHoras + "h con break menor a " + p.breakMinimoMin + "min"; } },
-  { id: "BRK", num: 2, nombre: "Break Menor al Minimo", icono: "*",
-    descFn: function(p) { return "Break corto inferior a " + p.breakMinimoMin + " minutos (normal: " + p.breakNormalMax + "min + " + p.breakTolerancia + "min tol)"; } },
+  { id: "BRK", num: 2, nombre: "Break Simulado (Menor al Minimo)", icono: "*",
+    descFn: function(p) { return "Cualquier break con duracion menor a " + p.breakMinimoMin + " min (simulacion de break)"; } },
   { id: "JXC", num: 3, nombre: "Jornadas Excesivas", icono: "#",
     descFn: function(p) { return "Jornada normal " + p.jornadaNormal + "h, max permitido " + p.jornadaMaxDia + "h/dia"; } },
   { id: "TPE", num: 4, nombre: "Turnos Partidos Excesivos", icono: "%",
-    descFn: function(p) { return "Max " + p.turnoPartidoMaxSemana + "/semana. Legal min " + p.turnoPartidoLegalMin + "min, Ilegal menor"; } },
-  { id: "EBR", num: 5, nombre: "Extension de Breaks", icono: "+",
-    descFn: function(p) { return "Break corto mayor a " + (p.breakNormalMax + p.breakTolerancia) + "min (normal " + p.breakNormalMax + "min + " + p.breakTolerancia + "min tol)"; } },
-  { id: "DSU", num: 6, nombre: "Domingos Supervisores", icono: "D",
-    descFn: function(p) { return "Supervisores ocasionales: max " + p.domingoMaxSupervisores + " domingos/mes"; } },
-  { id: "DBA", num: 7, nombre: "Domingos Personal de Base", icono: "B",
+    descFn: function(p) {
+      const r15a = p.break15Target - p.break15Tolerancia;
+      const r15b = p.break15Target + p.break15Tolerancia;
+      return "Max " + p.turnoPartidoMaxSemana + "/semana. Legal min " + p.turnoPartidoLegalMin + "min, Ilegal menor (excluye breaks de " + r15a + "-" + r15b + ")";
+    } },
+  { id: "EBR", num: 5, nombre: "Break Fuera de Rango", icono: "+",
+    descFn: function(p) {
+      const r15a = p.break15Target - p.break15Tolerancia;
+      const r15b = p.break15Target + p.break15Tolerancia;
+      const r30a = p.break30Target - p.break30Tolerancia;
+      const r30b = p.break30Target + p.break30Tolerancia;
+      return "Break debe estar en " + r15a + "-" + r15b + "min (15) o " + r30a + "-" + r30b + "min (30). Si toma 2, separacion min " + p.separacionMinHoras + "h";
+    } },
+  { id: "DBA", num: 6, nombre: "Domingos Personal de Base", icono: "B",
     descFn: function(p) { return "Equilibrio: min " + p.domingoMinDescansoBase + " domingo(s) libre(s)/mes"; } },
-  { id: "HES", num: 8, nombre: "HE Semanal (Max por Semana)", icono: "S",
+  { id: "HES", num: 7, nombre: "HE Semanal (Max por Semana)", icono: "S",
     descFn: function(p) { return "Max " + p.horasExtraMaxSemana + "h extra acumuladas por semana"; } },
-  { id: "HED", num: 9, nombre: "HE Diaria (Max por Dia)", icono: "H",
+  { id: "HED", num: 8, nombre: "HE Diaria (Max por Dia)", icono: "H",
     descFn: function(p) { return "Max " + p.horasExtraMaxDia + "h extra por dia (jornada normal " + p.jornadaNormal + "h)"; } },
 ];
 
@@ -545,7 +559,22 @@ function evaluarPoliticas(marcaciones, params, sedeFiltro) {
     resultados[p.id] = { ...p, desc: p.descFn(params), violadores: [] };
   });
 
-  const breakLimiteExtension = params.breakNormalMax + params.breakTolerancia; // 15+3 = 18min
+  // === RANGOS DE BREAKS VALIDOS ===
+  const r15Min = params.break15Target - params.break15Tolerancia;  // 13
+  const r15Max = params.break15Target + params.break15Tolerancia;  // 17
+  const r30Min = params.break30Target - params.break30Tolerancia;  // 28
+  const r30Max = params.break30Target + params.break30Tolerancia;  // 32
+  const separacionMinH = params.separacionMinHoras;  // 2 horas
+
+  // Helper: clasifica un break por su duracion
+  // Retorna: { ok: bool, tipo: '15'|'30'|'fuera', motivo: string }
+  const clasificarBreak = (durMin) => {
+    if (durMin >= r15Min && durMin <= r15Max) return { ok: true, tipo: "15", motivo: "OK 15min" };
+    if (durMin >= r30Min && durMin <= r30Max) return { ok: true, tipo: "30", motivo: "OK 30min" };
+    if (durMin < r15Min) return { ok: false, tipo: "fuera", motivo: "muy corto" };
+    if (durMin > r15Max && durMin < r30Min) return { ok: false, tipo: "fuera", motivo: "zona muerta entre 15 y 30" };
+    return { ok: false, tipo: "fuera", motivo: "muy largo" };
+  };
 
   // -- Precalcular domingos únicos por mes UNA SOLA VEZ (evita filter O(n) dentro del loop de empleados) --
   const totalDomingosPorMesGlobal = {};
@@ -587,15 +616,20 @@ function evaluarPoliticas(marcaciones, params, sedeFiltro) {
         });
       }
 
-      // POL 2: Break menor al minimo
-      // Al menos tuvo break corto pero fue <8min
-      if (breaksCortos.length > 0 && breakCortoMaxMin < params.breakMinimoMin) {
-        resultados.BRK.violadores.push({
-          ...base, fecha: r.FECHA,
-          detalle: `Break corto max: ${breakCortoMaxMin}min (min ${params.breakMinimoMin}min) | ${detBreak}`,
-          valor: breakCortoMaxMin,
-        });
-      }
+      // POL 2: Break simulado (menor al minimo) - aplica a TODOS los breaks
+      // Cualquier break con duracion < breakMinimoMin se considera simulacion
+      // Solo evalua los breaks cortos (excluye TP)
+      breaksCortos.forEach((b) => {
+        if (b.duracionMin < params.breakMinimoMin) {
+          const sH = Math.floor(b.salidaH) + ":" + String(Math.round((b.salidaH % 1) * 60)).padStart(2, "0");
+          const lH = Math.floor(b.llegadaH) + ":" + String(Math.round((b.llegadaH % 1) * 60)).padStart(2, "0");
+          resultados.BRK.violadores.push({
+            ...base, fecha: r.FECHA,
+            detalle: `Break SIMULADO: ${b.duracionMin}min (${sH}-${lH}, min ${params.breakMinimoMin}min) | ${detBreak}`,
+            valor: b.duracionMin,
+          });
+        }
+      });
 
       // POL 3: Jornada excesiva
       if (horas > params.jornadaMaxDia) {
@@ -606,32 +640,54 @@ function evaluarPoliticas(marcaciones, params, sedeFiltro) {
         });
       }
 
-      // POL 5: Extension de breaks
-      // Un break CORTO (<45min) que supera el permitido (15min + 3min tolerancia = 18min)
-      breaksCortos.forEach((b) => {
-        if (b.duracionMin > breakLimiteExtension) {
-          const sH = Math.floor(b.salidaH) + ":" + String(Math.round((b.salidaH % 1) * 60)).padStart(2, "0");
-          const lH = Math.floor(b.llegadaH) + ":" + String(Math.round((b.llegadaH % 1) * 60)).padStart(2, "0");
+      // POL 5: Break Fuera de Rango
+      // Cada break individual debe estar en rango 13-17 (15min) o 28-32 (30min)
+      // Si toma 2 breaks deben estar separados al menos N horas de trabajo entre ellos
+      // Ignora breaks que ya fueron reportados como BRK (simulados < breakMinimoMin)
+      const fmtHora = (h) => Math.floor(h) + ":" + String(Math.round((h % 1) * 60)).padStart(2, "0");
+
+      // Filtrar breaks evaluables (no simulados): solo los que pasan minimo de pol 2
+      const breaksEvaluables = breaksCortos.filter((b) => b.duracionMin >= params.breakMinimoMin);
+
+      // 5.1 - Validacion individual por rango
+      breaksEvaluables.forEach((b) => {
+        const cl = clasificarBreak(b.duracionMin);
+        if (!cl.ok) {
           resultados.EBR.violadores.push({
             ...base, fecha: r.FECHA,
-            detalle: `Break de ${b.duracionMin}min (${sH}-${lH}). Permitido: ${params.breakNormalMax}min + ${params.breakTolerancia}min tol = ${breakLimiteExtension}min. Excede ${b.duracionMin - breakLimiteExtension}min`,
+            detalle: `Break FUERA DE RANGO: ${b.duracionMin}min (${fmtHora(b.salidaH)}-${fmtHora(b.llegadaH)}). ${cl.motivo}. Validos: ${r15Min}-${r15Max}min o ${r30Min}-${r30Max}min`,
             valor: b.duracionMin,
           });
         }
       });
 
-      // Tambien reportar TP ilegales como extension (>45min pero <170min)
+      // 5.2 - Anti-fusion: si tomo 2+ breaks evaluables, verificar separacion
+      if (breaksEvaluables.length >= 2) {
+        const breaksOrdenados = [...breaksEvaluables].sort((a, b) => a.salidaH - b.salidaH);
+        for (let i = 1; i < breaksOrdenados.length; i++) {
+          const prev = breaksOrdenados[i - 1];
+          const curr = breaksOrdenados[i];
+          const horasEntre = curr.salidaH - prev.llegadaH; // horas de trabajo entre fin del 1ro e inicio del 2do
+          if (horasEntre < separacionMinH) {
+            resultados.EBR.violadores.push({
+              ...base, fecha: r.FECHA,
+              detalle: `BREAKS PEGADOS: solo ${horasEntre.toFixed(2)}h de trabajo entre fin de break (${fmtHora(prev.llegadaH)}) e inicio del siguiente (${fmtHora(curr.salidaH)}). Min ${separacionMinH}h`,
+              valor: Math.round(horasEntre * 100) / 100,
+            });
+          }
+        }
+      }
+
+      // Tambien reportar TP ilegales como break fuera de rango (>45min pero <170min)
       tpIlegales.forEach((b) => {
-        const sH = Math.floor(b.salidaH) + ":" + String(Math.round((b.salidaH % 1) * 60)).padStart(2, "0");
-        const lH = Math.floor(b.llegadaH) + ":" + String(Math.round((b.llegadaH % 1) * 60)).padStart(2, "0");
         resultados.EBR.violadores.push({
           ...base, fecha: r.FECHA,
-          detalle: "TP ILEGAL: " + b.duracionMin + "min (" + sH + "-" + lH + "). No es break corto (mayor a " + params.breakMaxPermitido + "min) ni TP legal (menor a " + params.turnoPartidoLegalMin + "min)",
+          detalle: "TP ILEGAL: " + b.duracionMin + "min (" + fmtHora(b.salidaH) + "-" + fmtHora(b.llegadaH) + "). No es break corto (mayor a " + params.breakMaxPermitido + "min) ni TP legal (menor a " + params.turnoPartidoLegalMin + "min)",
           valor: b.duracionMin,
         });
       });
 
-      // POL 9: HE diaria
+      // POL 8: HE diaria (antes pol 9)
       if (horasExtra > params.horasExtraMaxDia) {
         resultados.HED.violadores.push({
           ...base, fecha: r.FECHA,
@@ -666,7 +722,7 @@ function evaluarPoliticas(marcaciones, params, sedeFiltro) {
         });
       }
 
-      // POL 8: HE semanal
+      // POL 7: HE semanal (antes pol 8)
       if (horasExtraSemana > params.horasExtraMaxSemana) {
         resultados.HES.violadores.push({
           ...base, fecha: semana,
@@ -689,17 +745,10 @@ function evaluarPoliticas(marcaciones, params, sedeFiltro) {
     Object.entries(domingosPorMes).forEach(([mes, trabajados]) => {
       const totalDom = totalDomingosPorMesGlobal[mes] || 4;
 
-      // POL 6: Domingos supervisores
-      if (esSupervisor(emp.cargo) && trabajados > params.domingoMaxSupervisores) {
-        resultados.DSU.violadores.push({
-          ...base, fecha: mes,
-          detalle: `${trabajados} domingos en ${mes} (max ${params.domingoMaxSupervisores} para supervisores/ocasionales)`,
-          valor: trabajados,
-        });
-      }
-
-      // POL 7: Domingos personal base
-      if (!esSupervisor(emp.cargo)) {
+      // POL 6: Domingos personal base (antes pol 7)
+      // Aplica a TODOS los cargos. Eliminada distincion supervisor/no supervisor
+      // POL 6 ahora aplica a TODOS los cargos (antes excluia supervisores)
+      {
         const libres = totalDom - trabajados;
         if (libres < params.domingoMinDescansoBase) {
           resultados.DBA.violadores.push({
@@ -2087,7 +2136,19 @@ function PolView({ marc: marcaciones = [], parametros, setParametros, userName }
     const esCargoTP = cargo => { if(!cargosTPartido.length)return true; const c=(cargo||"").toUpperCase(); return cargosTPartido.some(s=>c.includes(s)); };
     const resultados = {};
     POLITICAS_DEF.forEach(p => { resultados[p.id] = { ...p, desc: p.descFn(parametros), violadores: [] }; });
-    const breakLimiteExtension = parametros.breakNormalMax + parametros.breakTolerancia;
+    // Rangos de breaks
+    const r15Min = parametros.break15Target - parametros.break15Tolerancia;
+    const r15Max = parametros.break15Target + parametros.break15Tolerancia;
+    const r30Min = parametros.break30Target - parametros.break30Tolerancia;
+    const r30Max = parametros.break30Target + parametros.break30Tolerancia;
+    const separacionMinH = parametros.separacionMinHoras;
+    const clasificarBreak = (durMin) => {
+      if (durMin >= r15Min && durMin <= r15Max) return { ok: true, motivo: "OK 15min" };
+      if (durMin >= r30Min && durMin <= r30Max) return { ok: true, motivo: "OK 30min" };
+      if (durMin < r15Min) return { ok: false, motivo: "muy corto" };
+      if (durMin > r15Max && durMin < r30Min) return { ok: false, motivo: "zona muerta entre 15 y 30" };
+      return { ok: false, motivo: "muy largo" };
+    };
     const totalDomingosPorMesGlobal = {};
     { const fechasDomPorMes = {}; datos.forEach(d => { if(d.DIA_SEMANA==="Domingo"&&d.MES){ if(!fechasDomPorMes[d.MES])fechasDomPorMes[d.MES]={}; fechasDomPorMes[d.MES][d.FECHA]=1; } }); Object.keys(fechasDomPorMes).forEach(mes => { totalDomingosPorMesGlobal[mes] = Math.max(Object.keys(fechasDomPorMes[mes]).length,4); }); }
 
@@ -2110,9 +2171,14 @@ function PolView({ marc: marcaciones = [], parametros, setParametros, userName }
           const breakCortoTotalMin = r.BREAK_CORTO_TOTAL_MIN||0;
           const detBreak = r.BREAK_DETALLE||"";
           if(horas>parametros.jornadaExtendidaHoras&&breakCortoTotalMin<parametros.breakMinimoMin) resultados.JEX.violadores.push({...base,fecha:r.FECHA,detalle:horas.toFixed(1)+"h, break total: "+breakCortoTotalMin+"min (min "+parametros.breakMinimoMin+"min)",valor:horas});
-          if(breaksCortos.length>0&&breakCortoMaxMin<parametros.breakMinimoMin) resultados.BRK.violadores.push({...base,fecha:r.FECHA,detalle:"Break max: "+breakCortoMaxMin+"min (min "+parametros.breakMinimoMin+"min)",valor:breakCortoMaxMin});
+          // POL 2: Break simulado - aplica a CADA break < minimo
+          breaksCortos.forEach(b => { if(b.duracionMin<parametros.breakMinimoMin){ const sH=Math.floor(b.salidaH)+":"+String(Math.round((b.salidaH%1)*60)).padStart(2,"0"); const lH=Math.floor(b.llegadaH)+":"+String(Math.round((b.llegadaH%1)*60)).padStart(2,"0"); resultados.BRK.violadores.push({...base,fecha:r.FECHA,detalle:"Break SIMULADO: "+b.duracionMin+"min ("+sH+"-"+lH+", min "+parametros.breakMinimoMin+"min)",valor:b.duracionMin}); } });
           if(horas>parametros.jornadaMaxDia) resultados.JXC.violadores.push({...base,fecha:r.FECHA,detalle:horas.toFixed(1)+"h (max "+parametros.jornadaMaxDia+"h, excede "+(horas-parametros.jornadaMaxDia).toFixed(1)+"h)",valor:horas});
-          breaksCortos.forEach(b => { if(b.duracionMin>breakLimiteExtension){ const sH=Math.floor(b.salidaH)+":"+String(Math.round((b.salidaH%1)*60)).padStart(2,"0"); const lH=Math.floor(b.llegadaH)+":"+String(Math.round((b.llegadaH%1)*60)).padStart(2,"0"); resultados.EBR.violadores.push({...base,fecha:r.FECHA,detalle:"Break "+b.duracionMin+"min ("+sH+"-"+lH+"). Excede "+(b.duracionMin-breakLimiteExtension)+"min",valor:b.duracionMin}); } });
+          // POL 5: Break fuera de rango (solo evalua los que pasan minimo de pol 2)
+          const breaksEval = breaksCortos.filter(b => b.duracionMin >= parametros.breakMinimoMin);
+          breaksEval.forEach(b => { const cl = clasificarBreak(b.duracionMin); if(!cl.ok){ const sH=Math.floor(b.salidaH)+":"+String(Math.round((b.salidaH%1)*60)).padStart(2,"0"); const lH=Math.floor(b.llegadaH)+":"+String(Math.round((b.llegadaH%1)*60)).padStart(2,"0"); resultados.EBR.violadores.push({...base,fecha:r.FECHA,detalle:"Break FUERA DE RANGO: "+b.duracionMin+"min ("+sH+"-"+lH+"). "+cl.motivo+". Validos: "+r15Min+"-"+r15Max+"min o "+r30Min+"-"+r30Max+"min",valor:b.duracionMin}); } });
+          // Anti-fusion
+          if (breaksEval.length >= 2) { const ord = [...breaksEval].sort((a,b)=>a.salidaH-b.salidaH); for (let i=1;i<ord.length;i++){ const horasEntre = ord[i].salidaH - ord[i-1].llegadaH; if(horasEntre < separacionMinH){ const fA=Math.floor(ord[i-1].llegadaH)+":"+String(Math.round((ord[i-1].llegadaH%1)*60)).padStart(2,"0"); const iB=Math.floor(ord[i].salidaH)+":"+String(Math.round((ord[i].salidaH%1)*60)).padStart(2,"0"); resultados.EBR.violadores.push({...base,fecha:r.FECHA,detalle:"BREAKS PEGADOS: solo "+horasEntre.toFixed(2)+"h de trabajo entre breaks ("+fA+"-"+iB+"). Min "+separacionMinH+"h",valor:Math.round(horasEntre*100)/100}); } } }
           tpIlegales.forEach(b => { const sH=Math.floor(b.salidaH)+":"+String(Math.round((b.salidaH%1)*60)).padStart(2,"0"); const lH=Math.floor(b.llegadaH)+":"+String(Math.round((b.llegadaH%1)*60)).padStart(2,"0"); resultados.EBR.violadores.push({...base,fecha:r.FECHA,detalle:"TP ILEGAL: "+b.duracionMin+"min ("+sH+"-"+lH+")",valor:b.duracionMin}); });
           if(horasExtra>parametros.horasExtraMaxDia) resultados.HED.violadores.push({...base,fecha:r.FECHA,detalle:horasExtra.toFixed(1)+"h extra (max "+parametros.horasExtraMaxDia+"h). Total: "+horas.toFixed(1)+"h",valor:horasExtra});
         });
@@ -2128,8 +2194,8 @@ function PolView({ marc: marcaciones = [], parametros, setParametros, userName }
         regs.forEach(r => { if(r.DIA_SEMANA==="Domingo"){ const mes=r.MES||"Sin mes"; domingosPorMes[mes]=(domingosPorMes[mes]||0)+1; } });
         Object.entries(domingosPorMes).forEach(([mes,trabajados]) => {
           const totalDom = totalDomingosPorMesGlobal[mes]||4;
-          if(esSupervisor(emp.cargo)&&trabajados>parametros.domingoMaxSupervisores) resultados.DSU.violadores.push({...base,fecha:mes,detalle:trabajados+" domingos en "+mes+" (max "+parametros.domingoMaxSupervisores+")",valor:trabajados});
-          if(!esSupervisor(emp.cargo)){ const libres=totalDom-trabajados; if(libres<parametros.domingoMinDescansoBase) resultados.DBA.violadores.push({...base,fecha:mes,detalle:trabajados+"/"+totalDom+" domingos, "+libres+" libre(s) (min "+parametros.domingoMinDescansoBase+")",valor:trabajados}); }
+          const libres = totalDom - trabajados;
+          if (libres < parametros.domingoMinDescansoBase) resultados.DBA.violadores.push({...base,fecha:mes,detalle:trabajados+"/"+totalDom+" domingos, "+libres+" libre(s) (min "+parametros.domingoMinDescansoBase+")",valor:trabajados});
         });
       }
       idx = end;
@@ -2404,9 +2470,12 @@ function PolView({ marc: marcaciones = [], parametros, setParametros, userName }
             {/* Breaks */}
             <div style={{padding:12,borderRadius:10,background:C.bg,border:"1px solid "+C.bd}}>
               <div style={{color:C.s,fontSize:10,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:1}}>Breaks (Pol 2, 5)</div>
-              <ParamInput label="Break minimo (min)" value={parametros.breakMinimoMin} onChange={(v) => setParam("breakMinimoMin", v)} ayuda="Pol 2: Menos de esto = sin descanso real" />
-              <ParamInput label="Break normal (min)" value={parametros.breakNormalMax} onChange={(v) => setParam("breakNormalMax", v)} ayuda="Duracion estandar del break corto" />
-              <ParamInput label="Tolerancia (min)" value={parametros.breakTolerancia} onChange={(v) => setParam("breakTolerancia", v)} ayuda="Margen extra sobre el break normal" />
+              <ParamInput label="Break minimo (min)" value={parametros.breakMinimoMin} onChange={(v) => setParam("breakMinimoMin", v)} ayuda="Pol 2: menos de esto = break simulado" />
+              <ParamInput label="Target break 15 (min)" value={parametros.break15Target} onChange={(v) => setParam("break15Target", v)} ayuda="Duracion ideal del break corto" />
+              <ParamInput label="Tolerancia 15 (±min)" value={parametros.break15Tolerancia} onChange={(v) => setParam("break15Tolerancia", v)} ayuda={"Rango valido: "+(parametros.break15Target-parametros.break15Tolerancia)+"-"+(parametros.break15Target+parametros.break15Tolerancia)+"min"} />
+              <ParamInput label="Target break 30 (min)" value={parametros.break30Target} onChange={(v) => setParam("break30Target", v)} ayuda="Duracion ideal del break largo" />
+              <ParamInput label="Tolerancia 30 (±min)" value={parametros.break30Tolerancia} onChange={(v) => setParam("break30Tolerancia", v)} ayuda={"Rango valido: "+(parametros.break30Target-parametros.break30Tolerancia)+"-"+(parametros.break30Target+parametros.break30Tolerancia)+"min"} />
+              <ParamInput label="Separacion min entre breaks (h)" value={parametros.separacionMinHoras} onChange={(v) => setParam("separacionMinHoras", v)} ayuda="Anti-fusion: si toma 2 breaks, deben tener N horas de trabajo entre medias" />
               <ParamInput label="Umbral turno partido (min)" value={parametros.breakMaxPermitido} onChange={(v) => setParam("breakMaxPermitido", v)} ayuda=">=esto se considera turno partido, no break" />
             </div>
             {/* Turnos Partidos */}
@@ -2416,28 +2485,19 @@ function PolView({ marc: marcaciones = [], parametros, setParametros, userName }
               <ParamInput label="Max TP por semana" value={parametros.turnoPartidoMaxSemana} onChange={(v) => setParam("turnoPartidoMaxSemana", v)} />
               <ParamInput label="Aplica a cargos" value={parametros.turnoPartidoAplicaCargos} onChange={(v) => setParam("turnoPartidoAplicaCargos", v)} tipo="text" ayuda="Separados por coma. Vacio = todos" />
             </div>
-            {/* Pol 6: Domingos Supervisores */}
+            {/* Pol 6: Domingos Personal Base */}
             <div style={{padding:12,borderRadius:10,background:C.bg,border:"1px solid "+C.bd}}>
-              <div style={{color:"#ec4899",fontSize:10,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:1}}>Pol 6: Domingos Supervisores</div>
-              <ParamInput label="Max domingos/mes" value={parametros.domingoMaxSupervisores} onChange={(v) => setParam("domingoMaxSupervisores", v)} ayuda="Son OCASIONALES, no pueden superar este limite" />
-              <ParamInput label="Cargos ocasionales" value={parametros.cargosSupervisor} onChange={(v) => setParam("cargosSupervisor", v)} tipo="text" ayuda="Estos cargos aplican Pol 6 (separados por coma)" />
-              <div style={{marginTop:6,padding:6,borderRadius:4,background:"rgba(236,72,153,0.08)",border:"1px solid rgba(236,72,153,0.15)"}}>
-                <span style={{color:"#f472b6",fontSize:8,lineHeight:"1.4",display:"block"}}>Estos cargos son ocasionales: max {parametros.domingoMaxSupervisores} domingos/mes. Si trabajan mas, incumplen.</span>
-              </div>
-            </div>
-            {/* Pol 7: Domingos Personal Base */}
-            <div style={{padding:12,borderRadius:10,background:C.bg,border:"1px solid "+C.bd}}>
-              <div style={{color:"#a78bfa",fontSize:10,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:1}}>Pol 7: Domingos Personal Base</div>
+              <div style={{color:"#a78bfa",fontSize:10,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:1}}>Pol 6: Domingos Personal Base</div>
               <ParamInput label="Min domingos libres/mes" value={parametros.domingoMinDescansoBase} onChange={(v) => setParam("domingoMinDescansoBase", v)} ayuda="Deben descansar al menos N domingo(s) al mes" />
               <div style={{marginTop:6,padding:6,borderRadius:4,background:"rgba(167,139,250,0.08)",border:"1px solid rgba(167,139,250,0.15)"}}>
-                <span style={{color:"#c4b5fd",fontSize:8,lineHeight:"1.4",display:"block"}}>Aplica a TODOS los cargos que NO estan en Pol 6. Pueden ser habituales pero deben descansar al menos {parametros.domingoMinDescansoBase} domingo(s).</span>
+                <span style={{color:"#c4b5fd",fontSize:8,lineHeight:"1.4",display:"block"}}>Aplica a TODOS los cargos. Deben descansar al menos {parametros.domingoMinDescansoBase} domingo(s) al mes.</span>
               </div>
             </div>
             {/* Horas Extra */}
             <div style={{padding:12,borderRadius:10,background:C.bg,border:"1px solid "+C.bd}}>
-              <div style={{color:C.ac,fontSize:10,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:1}}>Horas Extra (Pol 8, 9)</div>
-              <ParamInput label="Max HE por semana" value={parametros.horasExtraMaxSemana} onChange={(v) => setParam("horasExtraMaxSemana", v)} ayuda="Pol 8: Acumulado semanal" />
-              <ParamInput label="Max HE por dia" value={parametros.horasExtraMaxDia} onChange={(v) => setParam("horasExtraMaxDia", v)} ayuda={`Pol 9: Sobre jornada normal de ${parametros.jornadaNormal}h`} />
+              <div style={{color:C.ac,fontSize:10,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:1}}>Horas Extra (Pol 7, 8)</div>
+              <ParamInput label="Max HE por semana" value={parametros.horasExtraMaxSemana} onChange={(v) => setParam("horasExtraMaxSemana", v)} ayuda="Pol 7: Acumulado semanal" />
+              <ParamInput label="Max HE por dia" value={parametros.horasExtraMaxDia} onChange={(v) => setParam("horasExtraMaxDia", v)} ayuda={"Pol 8: Sobre jornada normal de "+parametros.jornadaNormal+"h"} />
             </div>
           </div>
         </div>
@@ -2656,14 +2716,13 @@ function RulesView() {
 
   const politicas = [
     { num:1, sigla:"JEX", nombre:"Jornadas Extendidas sin Descanso", desc:"Detecta cuando un empleado trabaja más del umbral de jornada extendida Y no tuvo un descanso mínimo. Es una alerta de carga laboral sin pausa.", formula:"horas_trabajadas > 10h Y break_corto_total < 8min", defaults:"Umbral: 10h · Break mínimo: 8min", nivel:"Por día", aplica:"Todos los empleados" },
-    { num:2, sigla:"BRK", nombre:"Break Menor al Mínimo", desc:"Detecta cuando el empleado tuvo un break corto, pero fue demasiado breve (menos del mínimo establecido).", formula:"break_corto_max < 8min", defaults:"Mínimo: 8min", nivel:"Por día", aplica:"Todos los empleados" },
+    { num:2, sigla:"BRK", nombre:"Break Simulado (Menor al Mínimo)", desc:"Detecta breaks 'fantasma': el empleado marca salida y llegada de break pero el tiempo real es menor al mínimo. Indica simulación para tomar ventaja.", formula:"cualquier_break < 8min", defaults:"Mínimo: 8min · Aplica a CADA break del día", nivel:"Por día (por cada break)", aplica:"Todos los empleados" },
     { num:3, sigla:"JXC", nombre:"Jornadas Excesivas", desc:"Detecta cuando la jornada supera el máximo diario permitido. Es el tope absoluto de horas diarias.", formula:"horas_trabajadas > 9h", defaults:"Tope: 9h", nivel:"Por día", aplica:"Todos los empleados" },
     { num:4, sigla:"TPE", nombre:"Turnos Partidos Excesivos", desc:"Detecta cuando un empleado tiene más de N turnos partidos en una semana.", formula:"turnos_partidos_semana > 2", defaults:"Máx semana: 2 · Aplica a todos los cargos por default", nivel:"Por semana", aplica:"Configurable (lista de cargos)" },
-    { num:5, sigla:"EBR", nombre:"Extensión de Breaks", desc:"Detecta breaks que exceden lo permitido O turnos partidos ilegales (ni break ni TP legal).", formula:"break_corto > 18min (15+3 tolerancia) O TP 45-170min", defaults:"Normal 15min + tolerancia 3min · TP legal >= 170min", nivel:"Por día", aplica:"Todos los empleados" },
-    { num:6, sigla:"DSU", nombre:"Domingos Supervisores", desc:"Supervisores deberían ser ocasionales en domingos. Detecta si trabajan más de N domingos/mes.", formula:"domingos_trabajados_mes > 2 (si es supervisor)", defaults:"Máx: 2 · Cargos: SUPERVISOR, COORDINADOR, ADMINISTRADOR", nivel:"Por mes", aplica:"Solo cargos supervisor" },
-    { num:7, sigla:"DBA", nombre:"Domingos Personal Base", desc:"Personal de base puede trabajar habitualmente, pero debe tener equilibrio: al menos 1 domingo libre al mes.", formula:"domingos_libres_mes < 1", defaults:"Min domingos libres: 1", nivel:"Por mes", aplica:"Empleados NO supervisores" },
-    { num:8, sigla:"HES", nombre:"HE Semanal", desc:"Horas extra acumuladas en una semana no deben superar el límite legal/interno.", formula:"suma_HE_semana > 12h", defaults:"Máx: 12h/semana", nivel:"Por semana", aplica:"Todos los empleados" },
-    { num:9, sigla:"HED", nombre:"HE Diaria", desc:"Horas extra en un solo día no deben superar el límite.", formula:"HE_dia > 2h (es decir, jornada > 9h si jornada normal = 7h)", defaults:"Máx: 2h/día", nivel:"Por día", aplica:"Todos los empleados" },
+    { num:5, sigla:"EBR", nombre:"Break Fuera de Rango", desc:"Cada break individual debe estar dentro de uno de los dos rangos válidos (break de 15 o break de 30). Si toma 2 breaks, deben estar separados por al menos N horas de trabajo (anti-fusión).", formula:"break NO en [13-17] Y NO en [28-32], O dos breaks con < 2h entre ellos", defaults:"Break 15: target 15 ±2 (13-17) · Break 30: target 30 ±2 (28-32) · Separación min: 2h", nivel:"Por día (por cada break)", aplica:"Todos los empleados" },
+    { num:6, sigla:"DBA", nombre:"Domingos Personal Base", desc:"Todo empleado debe tener al menos N domingo(s) libre(s) al mes. Aplica a TODOS los cargos por igual.", formula:"domingos_libres_mes < 1", defaults:"Min domingos libres: 1", nivel:"Por mes", aplica:"Todos los empleados" },
+    { num:7, sigla:"HES", nombre:"HE Semanal", desc:"Horas extra acumuladas en una semana no deben superar el límite legal/interno.", formula:"suma_HE_semana > 12h", defaults:"Máx: 12h/semana", nivel:"Por semana", aplica:"Todos los empleados" },
+    { num:8, sigla:"HED", nombre:"HE Diaria", desc:"Horas extra en un solo día no deben superar el límite.", formula:"HE_dia > 2h (es decir, jornada > 9h si jornada normal = 7h)", defaults:"Máx: 2h/día", nivel:"Por día", aplica:"Todos los empleados" },
   ];
 
   const conceptos = [
@@ -3212,7 +3271,7 @@ function RiesgoView({ marc, parametros }) {
   const polLabels = Object.fromEntries(POLITICAS_DEF.map(p => [p.id, "POL "+p.num+" — "+p.nombre]));
   const rankFiltrado = polFiltro==="Todas" ? ranking : ranking.filter(e=>e.pols[polFiltro]>0);
   const maxTotal = rankFiltrado[0]?.total || 1;
-  const COLORES_POL = { JEX:"#dc2626",BRK:"#f59e0b",JXC:"#ef4444",TPE:"#8b5cf6",EBR:"#f97316",DSU:"#06b6d4",DBA:"#0ea5e9",HES:"#6366f1",HED:"#d946ef" };
+  const COLORES_POL = { JEX:"#dc2626",BRK:"#f59e0b",JXC:"#ef4444",TPE:"#8b5cf6",EBR:"#f97316",DBA:"#0ea5e9",HES:"#6366f1",HED:"#d946ef" };
   const NOMBRES_POL = Object.fromEntries(POLITICAS_DEF.map(p => [p.id, "Política "+p.num+": "+p.nombre]));
 
   return (
@@ -3893,16 +3952,32 @@ function AuditoriaView({ marc: marcaciones = [] }) {
                           const bcMax = reg.BREAK_CORTO_MAX_MIN || 0;
                           const bcTot = reg.BREAK_CORTO_TOTAL_MIN || 0;
                           const heD = Math.max(0, h - 8);
+                          // Rangos de breaks (defaults: 13-17 y 28-32)
+                          const breakPairs = reg.BREAK_PAIRS || [];
+                          const breaksCortos = breakPairs.filter(b => b.tipo === "BREAK_CORTO");
+                          const breaksSimulados = breaksCortos.filter(b => b.duracionMin < 8);
+                          const breaksEval = breaksCortos.filter(b => b.duracionMin >= 8);
+                          const enRango = (d) => (d >= 13 && d <= 17) || (d >= 28 && d <= 32);
+                          const breaksFueraRango = breaksEval.filter(b => !enRango(b.duracionMin));
+                          // Anti-fusion
+                          let breaksPegados = false;
+                          if (breaksEval.length >= 2) {
+                            const ord = [...breaksEval].sort((a,b)=>a.salidaH-b.salidaH);
+                            for (let i=1;i<ord.length;i++) {
+                              if ((ord[i].salidaH - ord[i-1].llegadaH) < 2) { breaksPegados = true; break; }
+                            }
+                          }
+                          const pol5Cumple = breaksFueraRango.length === 0 && !breaksPegados;
                           return [
                             { id:"POL 1", nombre:"Jornada extendida sin descanso", cumple:!(h>10&&bcTot<8),
                               detalle: h>10 ? (bcTot<8?`${h}h trabajadas · solo ${bcTot}min break corto (mín. 8min)`:`${h}h con ${bcTot}min break — descanso suficiente`) : `Jornada de ${h}h no supera el umbral de 10h` },
-                            { id:"POL 2", nombre:"Break menor al mínimo", cumple:!(reg.BREAKS_CORTOS>0&&bcMax<8),
-                              detalle: reg.BREAKS_CORTOS===0?"Sin breaks cortos registrados":(bcMax<8?`Break mayor: ${bcMax}min (mín. 8min requeridos)`:`Break mayor: ${bcMax}min — cumple el mínimo`) },
+                            { id:"POL 2", nombre:"Break simulado (menor al mínimo)", cumple: breaksSimulados.length === 0,
+                              detalle: breaksCortos.length===0 ? "Sin breaks cortos registrados" : (breaksSimulados.length>0 ? `${breaksSimulados.length} break(s) simulados (<8min): ${breaksSimulados.map(b=>b.duracionMin+"min").join(", ")}` : `${breaksCortos.length} break(s) registrados, todos ≥ 8min`) },
                             { id:"POL 3", nombre:"Jornada excesiva (límite 12h)", cumple:h<=12,
                               detalle: h>12?`${h}h supera el máximo de 12h (excede ${(h-12).toFixed(1)}h)`:`${h}h dentro del límite de 12h` },
-                            { id:"POL 5", nombre:"Extensión de break (límite 18min)", cumple:bcMax<=18,
-                              detalle: bcMax>18?`Break de ${bcMax}min supera 15+3min tolerancia=18min (excede ${bcMax-18}min)`:`Break máximo ${bcMax}min — dentro del límite` },
-                            { id:"POL 9", nombre:"Horas extra diarias (límite 2h)", cumple:heD<=2,
+                            { id:"POL 5", nombre:"Break fuera de rango (13-17 o 28-32)", cumple: pol5Cumple,
+                              detalle: breaksEval.length===0 ? "Sin breaks evaluables" : (breaksPegados ? "Breaks pegados: <2h de trabajo entre ellos" : (breaksFueraRango.length>0 ? `${breaksFueraRango.length} break(s) fuera de rango: ${breaksFueraRango.map(b=>b.duracionMin+"min").join(", ")}` : `Todos los breaks dentro de rango válido`)) },
+                            { id:"POL 8", nombre:"Horas extra diarias (límite 2h)", cumple:heD<=2,
                               detalle: heD>0?(heD>2?`${heD.toFixed(1)}h extra supera límite (8h+2h=10h). Total: ${h}h`:`${heD.toFixed(1)}h extra — dentro del límite de 2h/día`):`Sin horas extra (jornada ≤8h)` },
                           ].map((pol) => {
                             const co = polColor(pol.cumple);
