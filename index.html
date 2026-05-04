@@ -16,16 +16,31 @@
   <div id="root">
     <div style="padding:40px;text-align:center;color:#1f6b2e;font-family:system-ui">
       <div style="font-size:24px;font-weight:700;margin-bottom:8px">Cargando StaffPulse...</div>
-      <div style="font-size:14px;color:#666">Si esto persiste más de 10 segundos, abre la consola (F12)</div>
+      <div style="font-size:14px;color:#666">Compilando codigo (puede tardar 5-10s en archivos grandes)</div>
     </div>
   </div>
+
+  <script>
+    // Capturar cualquier error global y mostrarlo en pantalla
+    window.addEventListener('error', function(e) {
+      const r = document.getElementById('root');
+      if (r) {
+        r.innerHTML = 
+          '<div style="padding:30px;font-family:monospace;background:#fee;color:#900;border:2px solid #c00;margin:20px;border-radius:10px">' +
+          '<h2 style="margin-bottom:15px;font-family:sans-serif">Error de JavaScript</h2>' +
+          '<div style="background:white;padding:15px;border-radius:6px;white-space:pre-wrap;font-size:12px">' + 
+          'Mensaje: ' + (e.message || 'desconocido') + '\n' +
+          'Archivo: ' + (e.filename || 'inline') + '\n' +
+          'Linea: ' + (e.lineno || '?') + ', Col: ' + (e.colno || '?') + '\n\n' +
+          'Stack: ' + (e.error && e.error.stack ? e.error.stack : 'no disponible') +
+          '</div></div>';
+      }
+    });
+  </script>
+
   <script type="text/babel" data-presets="react,env">
-// Globals desde CDN
 const { useState, useMemo, useRef, useEffect } = React;
-
-// Recharts UMD: probar window.Recharts (lo más estándar)
 const _RC = (typeof Recharts !== 'undefined' ? Recharts : window.Recharts) || {};
-
 const ComposedChart = _RC.ComposedChart;
 const Bar = _RC.Bar;
 const Line = _RC.Line;
@@ -40,11 +55,6 @@ const Radar = _RC.Radar;
 const PolarGrid = _RC.PolarGrid;
 const PolarAngleAxis = _RC.PolarAngleAxis;
 const PolarRadiusAxis = _RC.PolarRadiusAxis;
-
-// Verificar que cargó
-if (!_RC.ResponsiveContainer) {
-  console.error('Recharts no cargó correctamente. Globals disponibles:', Object.keys(window).filter(k => /^R/.test(k)));
-}
 const { useState, useMemo, useRef, useEffect } = React;
 const {
   ComposedChart, BarChart, Bar, Line, LineChart, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -5075,8 +5085,18 @@ const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(React.createElement(ErrorBoundary, null, React.createElement(App)));
 
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(React.createElement(App));
+try {
+  const root = ReactDOM.createRoot(document.getElementById('root'));
+  root.render(React.createElement(App));
+} catch(err) {
+  document.getElementById('root').innerHTML = 
+    '<div style="padding:30px;font-family:monospace;background:#fee;color:#900;border:2px solid #c00;margin:20px;border-radius:10px">' +
+    '<h2 style="margin-bottom:15px;font-family:sans-serif">Error al iniciar la app</h2>' +
+    '<div style="background:white;padding:15px;border-radius:6px;white-space:pre-wrap;font-size:13px">' + 
+    (err.message || err.toString()) + '\n\n' + (err.stack || '') + 
+    '</div></div>';
+  console.error(err);
+}
 
   </script>
 </body>
