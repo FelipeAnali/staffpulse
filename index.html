@@ -4,19 +4,28 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>StaffPulse – Supertiendas Cañaveral</title>
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/prop-types@15/prop-types.min.js"></script>
-  <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
-  <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <style>* { margin:0; padding:0; box-sizing:border-box; } body { overflow:hidden; } #root { height:100vh; }</style>
+  <script crossorigin src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prop-types@15/prop-types.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/recharts@2.12.7/umd/Recharts.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
+  <style>* { margin:0; padding:0; box-sizing:border-box; } body { overflow:hidden; } #root { height:100vh; font-family: system-ui, sans-serif; }</style>
 </head>
 <body>
-  <div id="root"></div>
-  <script type="text/babel">
+  <div id="root">
+    <div style="padding:40px;text-align:center;color:#1f6b2e;font-family:system-ui">
+      <div style="font-size:24px;font-weight:700;margin-bottom:8px">Cargando StaffPulse...</div>
+      <div style="font-size:14px;color:#666">Si esto persiste más de 10 segundos, abre la consola (F12)</div>
+    </div>
+  </div>
+  <script type="text/babel" data-presets="react,env">
+// Globals desde CDN
 const { useState, useMemo, useRef, useEffect } = React;
-const _RC = window.Recharts || window.RechartsLib || {};
+
+// Recharts UMD: probar window.Recharts (lo más estándar)
+const _RC = (typeof Recharts !== 'undefined' ? Recharts : window.Recharts) || {};
+
 const ComposedChart = _RC.ComposedChart;
 const Bar = _RC.Bar;
 const Line = _RC.Line;
@@ -31,6 +40,11 @@ const Radar = _RC.Radar;
 const PolarGrid = _RC.PolarGrid;
 const PolarAngleAxis = _RC.PolarAngleAxis;
 const PolarRadiusAxis = _RC.PolarRadiusAxis;
+
+// Verificar que cargó
+if (!_RC.ResponsiveContainer) {
+  console.error('Recharts no cargó correctamente. Globals disponibles:', Object.keys(window).filter(k => /^R/.test(k)));
+}
 const { useState, useMemo, useRef, useEffect } = React;
 const {
   ComposedChart, BarChart, Bar, Line, LineChart, XAxis, YAxis, CartesianGrid, Tooltip,
