@@ -461,9 +461,10 @@ function buildChart(marc, fact, f) {
 
   // -- Filtrar facturas en un solo recorrido --
   const ff = fact.filter(function(x) {
-    if (f.sede  !== "Todas" && x.sede  !== f.sede)  return false;
-    if (f.clase !== "Todas" && x.clase !== f.clase) return false;
-    if (f.mes   !== "Todos" && x.mes   !== f.mes)   return false;
+    if (f.sede  !== "Todas" && x.sede    !== f.sede)  return false;
+    if (f.clase !== "Todas" && x.clase   !== f.clase) return false;
+    if (f.area  && f.area  !== "Todas" && x.seccion !== f.area)  return false;
+    if (f.mes   !== "Todos" && x.mes     !== f.mes)   return false;
     if (f.dia   !== "Todos" && String(x.dia) !== f.dia) return false;
     return true;
   });
@@ -1135,8 +1136,20 @@ function Tip(props) {
 /* === DASHBOARD VIEW === */
 /* === RESUMEN EJECUTIVO VIEW === */
 function ResumenView({ marc, fact, parametros }) {
+  // Filtro local de area (desc_cri_mayor_item_2) para facturas
+  const [areaFiltro, setAreaFiltro] = useState("Todas");
+  const areasDisponibles = useMemo(() => {
+    const s = {};
+    fact.forEach(f => { if (f.seccion) s[f.seccion] = 1; });
+    return ["Todas", ...Object.keys(s).sort()];
+  }, [fact]);
+  const factFiltrado = useMemo(() => {
+    if (areaFiltro === "Todas") return fact;
+    return fact.filter(f => f.seccion === areaFiltro);
+  }, [fact, areaFiltro]);
+
   const totalMarc = marc.length;
-  const totalFact = fact.length;
+  const totalFact = factFiltrado.length;
 
   const stats = useMemo(() => {
     if (totalMarc === 0 && totalFact === 0) return null;
@@ -1164,7 +1177,7 @@ function ResumenView({ marc, fact, parametros }) {
     const promHoras = totalMarc > 0 ? (marc.reduce((s,m) => s+(m.TOTAL_HORAS||0), 0) / totalMarc).toFixed(1) : "0";
 
     // Venta total
-    const ventaTotal = fact.reduce((s,f) => s+(f.venta||0), 0);
+    const ventaTotal = factFiltrado.reduce((s,f) => s+(f.venta||0), 0);
 
     // Políticas globales (UNA sola llamada para todo)
     const globalResult = evaluarPoliticas(marc, parametros, "Todas");
@@ -1289,7 +1302,7 @@ function ResumenView({ marc, fact, parametros }) {
       politicas: globalResult.politicas,
       comparativo, alertas,
     };
-  }, [marc, fact, parametros]);
+  }, [marc, factFiltrado, parametros]);
 
   if (!stats) return (
     <div style={{textAlign:"center",padding:60}}>
@@ -1304,9 +1317,14 @@ function ResumenView({ marc, fact, parametros }) {
 
   return (
     <div>
-      <div style={{marginBottom:20}}>
-        <h2 style={{color:C.w,fontSize:20,fontWeight:800,margin:"0 0 4px"}}>Resumen Ejecutivo</h2>
-        <p style={{color:C.td,fontSize:12,margin:0}}>{stats.meses.join(", ")} · {stats.totalSedes} sedes · {stats.totalEmpleados} empleados · {stats.totalDias} días</p>
+      <div style={{marginBottom:20,display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:16,flexWrap:"wrap"}}>
+        <div>
+          <h2 style={{color:C.w,fontSize:20,fontWeight:800,margin:"0 0 4px"}}>Resumen Ejecutivo</h2>
+          <p style={{color:C.td,fontSize:12,margin:0}}>{stats.meses.join(", ")} · {stats.totalSedes} sedes · {stats.totalEmpleados} empleados · {stats.totalDias} días{areaFiltro !== "Todas" && <span style={{color:C.p,fontWeight:600}}> · Area: {areaFiltro}</span>}</p>
+        </div>
+        {areasDisponibles.length > 1 && (
+          <Pill label="Area" value={areaFiltro} options={areasDisponibles} onChange={setAreaFiltro} />
+        )}
       </div>
 
       {stats.comparativo && (
@@ -1501,7 +1519,7 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
   const hasFact = facturas.length > 0;
 
   const filtrosDefault = {
-    sede: "Todas", seccion: "Todas", clase: "Todas", mes: "Todos",
+    sede: "Todas", seccion: "Todas", area: "Todas", clase: "Todas", mes: "Todos",
     dsem: "Todos", semana: "Todas", dia: "Todos", quincena: "Todos"
   };
 
@@ -1516,7 +1534,7 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
 
   // -- Opciones dinamicas de filtros --
   const opcionesFiltros = useMemo(() => {
-    const sedes = {}, secciones = {}, clases = {}, meses = {}, semanas = {}, dias = {}, sedesFacturas = {};
+    const sedes = {}, secciones = {}, clases = {}, meses = {}, semanas = {}, dias = {}, sedesFacturas = {}, areas = {};
 
     marcaciones.forEach((m) => {
       if (m.DEPENDENCIA) sedes[m.DEPENDENCIA] = 1;
@@ -1529,7 +1547,7 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
     facturas.forEach((f) => {
       if (f.clase) clases[f.clase] = 1;
       if (f.sede) sedesFacturas[f.sede] = 1;
-      if (f.seccion) secciones[f.seccion] = 1;
+      if (f.seccion) areas[f.seccion] = 1; // desc_cri_mayor_item_2 -> Area de productos
       if (f.mes) meses[f.mes] = 1;
       if (f.dia != null && f.dia > 0) dias[String(f.dia)] = 1;
     });
@@ -1539,6 +1557,7 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
     return {
       sedes: ["Todas", ...Object.keys(sedes)],
       secciones: ["Todas", ...Object.keys(secciones)],
+      areas: ["Todas", ...Object.keys(areas).sort()],
       clases: ["Todas", ...Object.keys(clases)],
       meses: (function(){ var ORD=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"]; return ["Todos", ...Object.keys(meses).sort(function(a,b){ return ORD.indexOf(a.toLowerCase().trim()) - ORD.indexOf(b.toLowerCase().trim()); })]; })(),
       diasSemana: ["Todos", "Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado", "Domingo"],
@@ -1595,9 +1614,10 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
     datosGrafico.forEach((x) => { if (x.colaboradores > maxColaboradores) maxColaboradores = x.colaboradores; });
     datosGrafico.forEach((x) => { if (x.transacciones > maxTransacciones) maxTransacciones = x.transacciones; });
     facturas.forEach((f) => {
-      if (filtros.sede  !== "Todas" && f.sede  !== filtros.sede)  return;
-      if (filtros.clase !== "Todas" && f.clase !== filtros.clase) return;
-      if (filtros.mes   !== "Todos" && f.mes   !== filtros.mes)   return;
+      if (filtros.sede  !== "Todas" && f.sede    !== filtros.sede)  return;
+      if (filtros.clase !== "Todas" && f.clase   !== filtros.clase) return;
+      if (filtros.area  && filtros.area  !== "Todas" && f.seccion !== filtros.area)  return;
+      if (filtros.mes   !== "Todos" && f.mes     !== filtros.mes)   return;
       if (filtros.dia   !== "Todos" && String(f.dia) !== filtros.dia) return;
       ventaTotal += f.venta || 0;
     });
@@ -1637,6 +1657,7 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
   const filtrosVisibles = [];
   if (opcionesFiltros.sedes.length > 1) filtrosVisibles.push({ label: "Sede", key: "sede", opts: opcionesFiltros.sedes });
   if (hasMarc && opcionesFiltros.secciones.length > 1) filtrosVisibles.push({ label: "Seccion", key: "seccion", opts: opcionesFiltros.secciones });
+  if (hasFact && opcionesFiltros.areas.length > 1) filtrosVisibles.push({ label: "Area", key: "area", opts: opcionesFiltros.areas });
   if (hasFact && opcionesFiltros.clases.length > 1) filtrosVisibles.push({ label: "Clase", key: "clase", opts: opcionesFiltros.clases });
   if (opcionesFiltros.meses.length > 1) filtrosVisibles.push({ label: "Mes", key: "mes", opts: opcionesFiltros.meses });
   if (hasMarc) filtrosVisibles.push({ label: "DiaSem", key: "dsem", opts: opcionesFiltros.diasSemana });
@@ -3134,7 +3155,7 @@ function RulesView() {
 function EficienciaView({ marc, fact }) {
   const optsEfi = useMemo(() => {
     const ORD = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
-    const sedes = {}, secciones = {}, clases = {}, meses = {}, semanas = {}, dias = {};
+    const sedes = {}, secciones = {}, clases = {}, meses = {}, semanas = {}, dias = {}, areas = {};
     marc.forEach(m => {
       if (m.DEPENDENCIA) sedes[m.DEPENDENCIA] = 1;
       if (m.CENTROCOSTO) secciones[m.CENTROCOSTO] = 1;
@@ -3145,12 +3166,14 @@ function EficienciaView({ marc, fact }) {
     fact.forEach(f => {
       if (f.sede) sedes[f.sede] = 1;
       if (f.clase) clases[f.clase] = 1;
+      if (f.seccion) areas[f.seccion] = 1; // Area de productos
       if (f.mes) meses[f.mes] = 1;
       if (f.dia != null && f.dia > 0) dias[String(f.dia)] = 1;
     });
     return {
       sedes: ["Todas", ...Object.keys(sedes).sort()],
       secciones: ["Todas", ...Object.keys(secciones).sort()],
+      areas: ["Todas", ...Object.keys(areas).sort()],
       clases: ["Todas", ...Object.keys(clases).sort()],
       meses: (function(){ return ["Todos", ...Object.keys(meses).sort(function(a,b){ return ORD.indexOf(a.toLowerCase().trim()) - ORD.indexOf(b.toLowerCase().trim()); })]; })(),
       diasSemana: ["Todos", "Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado", "Domingo"],
@@ -3159,7 +3182,7 @@ function EficienciaView({ marc, fact }) {
     };
   }, [marc, fact]);
 
-  const filtrosDefault = { sede:"Todas", seccion:"Todas", clase:"Todas", mes:"Todos", dsem:"Todos", semana:"Todas", dia:"Todos", quincena:"Todos" };
+  const filtrosDefault = { sede:"Todas", seccion:"Todas", area:"Todas", clase:"Todas", mes:"Todos", dsem:"Todos", semana:"Todas", dia:"Todos", quincena:"Todos" };
   const [f, setF] = useState(filtrosDefault);
   const aplicar = (k, v) => setF(prev => Object.assign({}, prev, (function(){ var o={}; o[k]=v; return o; })()));
   const limpiar = () => setF(filtrosDefault);
@@ -3180,9 +3203,10 @@ function EficienciaView({ marc, fact }) {
 
   const factFilt = useMemo(() => {
     return fact.filter(x => {
-      if (f.sede  !== "Todas" && x.sede  !== f.sede)  return false;
-      if (f.clase !== "Todas" && x.clase !== f.clase) return false;
-      if (f.mes   !== "Todos" && x.mes   !== f.mes)   return false;
+      if (f.sede  !== "Todas" && x.sede    !== f.sede)  return false;
+      if (f.clase !== "Todas" && x.clase   !== f.clase) return false;
+      if (f.area  !== "Todas" && x.seccion !== f.area)  return false;
+      if (f.mes   !== "Todos" && x.mes     !== f.mes)   return false;
       if (f.dia   !== "Todos" && String(x.dia) !== f.dia) return false;
       return true;
     });
@@ -3238,6 +3262,7 @@ function EficienciaView({ marc, fact }) {
   const filtrosVisibles = [];
   if (optsEfi.sedes.length > 1) filtrosVisibles.push({ label:"Sede", key:"sede", opts:optsEfi.sedes });
   if (hasMarc && optsEfi.secciones.length > 1) filtrosVisibles.push({ label:"Seccion", key:"seccion", opts:optsEfi.secciones });
+  if (hasFact && optsEfi.areas.length > 1) filtrosVisibles.push({ label:"Area", key:"area", opts:optsEfi.areas });
   if (hasFact && optsEfi.clases.length > 1) filtrosVisibles.push({ label:"Clase", key:"clase", opts:optsEfi.clases });
   if (optsEfi.meses.length > 1) filtrosVisibles.push({ label:"Mes", key:"mes", opts:optsEfi.meses });
   if (hasMarc) filtrosVisibles.push({ label:"DiaSem", key:"dsem", opts:optsEfi.diasSemana });
@@ -4814,6 +4839,7 @@ function App() {
     if (mf.sedes) ff = ff.filter(function(f){ return mf.sedes[f.sede]; });
     if (mf.meses) ff = ff.filter(function(f){ return mf.meses[f.mes]; });
     if (mf.clases) ff = ff.filter(function(f){ return mf.clases[f.clase]; });
+    if (mf.areas) ff = ff.filter(function(f){ return mf.areas[f.seccion]; }); // Area de productos (desc_cri_mayor_item_2)
     return { marc: fm, fact: ff };
   }, [data, masterFilter]);
 
