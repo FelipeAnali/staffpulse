@@ -377,7 +377,8 @@ function procFact(rows) {
   var iHora    = headers.findIndex(function(h){ return h === "HORAS" || h === "HORA"; });
   var iMes     = headers.findIndex(function(h){ return h.indexOf("MES")>=0; });
   var iDia     = headers.findIndex(function(h){ return h.indexOf("DÍA")>=0 || h.indexOf("DIA")>=0; });
-  var iNFact   = headers.findIndex(function(h){ return h.indexOf("# FACT")>=0 || h.indexOf("FACT")>=0 && h.indexOf("FECHA")<0; });
+  var iSemana  = headers.findIndex(function(h){ return h === "SEMANA"; });
+  var iNFact   = headers.findIndex(function(h){ return h.indexOf("# FACT")>=0 || (h.indexOf("FACT")>=0 && h.indexOf("FECHA")<0); });
   var iCantReg = headers.findIndex(function(h){ return h.indexOf("CANT REG")>=0 || h.indexOf("CANT_REG")>=0; });
   var iVenta   = headers.findIndex(function(h){ return h === "VENTA" || h.indexOf("VENTA")>=0; });
   
@@ -391,25 +392,37 @@ function procFact(rows) {
   if (iNFact < 0) iNFact = 6;
   if (iVenta < 0) iVenta = headers.length - 1;
 
-  /* Detectar columna Semana si existe — filtrar subtotales de semana para evitar doble conteo */
-  var iSemana = headers.findIndex(function(h){ return h === "SEMANA"; });
-
   var results = [];
+  /* Helper para detectar subtotales: cualquier columna clave con "Total" descarta la fila */
+  function esSubtotal(w) {
+    var checks = [iHora, iMes, iDia, iNFact];
+    if (iSemana >= 0) checks.push(iSemana);
+    for (var k = 0; k < checks.length; k++) {
+      var idx = checks[k];
+      var v = w[idx];
+      if (v == null || String(v).trim().toLowerCase() === "total") return true;
+    }
+    return false;
+  }
+
   for (var i = 1; i < rows.length; i++) {
     var w = rows[i];
     if (!w) continue;
-    var hora = w[iHora], mes = w[iMes], dia = w[iDia], nf = w[iNFact];
-    /* Si existe columna Semana, excluir filas donde Semana = "Total" (son subtotales) */
-    if (iSemana >= 0) {
-      var sem = w[iSemana];
-      if (sem == null || String(sem) === "Total") continue;
-    }
-    if (hora != null && !isNaN(Number(hora)) && String(hora) !== "Total"
-      && mes != null && String(mes) !== "Total"
-      && dia != null && String(dia) !== "Total"
-      && nf != null && String(nf) !== "Total") {
-      results.push({seccion:String(w[iSeccion]||""),clase:String(w[iClase]||""),sede:normSede(w[iSede]),hora:Number(hora),mes:String(mes),dia:Number(dia)||0,nfact:Number(nf)||0,venta:Number(w[iVenta])||0});
-    }
+    if (esSubtotal(w)) continue;
+    var hora = w[iHora];
+    if (hora == null || isNaN(Number(hora))) continue;
+    results.push({
+      seccion: String(w[iSeccion]||""),
+      clase:   String(w[iClase]||""),
+      sede:    normSede(w[iSede]),
+      hora:    Number(hora),
+      mes:     String(w[iMes]),
+      dia:     Number(w[iDia])||0,
+      semana:  iSemana >= 0 ? (Number(w[iSemana])||0) : 0,
+      nfact:   Number(w[iNFact])||0,
+      cantReg: iCantReg >= 0 ? (Number(w[iCantReg])||0) : 0,
+      venta:   Number(w[iVenta])||0,
+    });
   }
   return results;
 }
