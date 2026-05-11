@@ -4219,13 +4219,13 @@ function ExportModal({ data, filteredData, masterFilter, limpiarMarc, descargarA
 
   function generarMemoriaSede(marc, fact, sedeName) {
     var marcClean = limpiarMarc(marc);
-    return JSON.stringify({_type:"seguimiento_memory",_v:2,sede:sedeName,fecha:fecha,_generadoPor:userName||"Usuario",_confidencial:"Documento confidencial — Supertiendas Cañaveral S.A.",marcaciones:marcClean,facturas:fact}, null, 2);
+    return JSON.stringify({_type:"seguimiento_memory",_v:2,sede:sedeName,fecha:fecha,_generadoPor:userName||"Usuario",_confidencial:"Documento confidencial — Supertiendas Cañaveral S.A.",marcaciones:marcClean,facturas:fact});
   }
 
   function exportConsolidado() {
     var marcClean = limpiarMarc(filteredData.marc);
     var sedeName = masterFilter.sedes ? Object.keys(masterFilter.sedes).find(function(k){return masterFilter.sedes[k];}) || "" : "";
-    var jsonStr = JSON.stringify({_type:"seguimiento_memory",_v:2,_generadoPor:userName||"Usuario",_confidencial:"Documento confidencial — Supertiendas Cañaveral S.A.",_fecha:fecha,marcaciones:marcClean,facturas:filteredData.fact}, null, 2);
+    var jsonStr = JSON.stringify({_type:"seguimiento_memory",_v:2,_generadoPor:userName||"Usuario",_confidencial:"Documento confidencial — Supertiendas Cañaveral S.A.",_fecha:fecha,marcaciones:marcClean,facturas:filteredData.fact});
     var nombre = "seguimiento_consolidado_" + (sedeName ? sedeName.replace(/\s+/g,"_") + "_" : "") + fecha + ".json";
     descargarArchivo(jsonStr, nombre, "application/json");
     onClose();
@@ -4650,10 +4650,63 @@ function App() {
             continue;
           }
 
-          if (file.name.endsWith(".json")) {
-            var text = await file.text();
-            var json = JSON.parse(text);
+          if (file.name.endsWith(".json") || file.name.endsWith(".scmem")) {
+            // === Aviso de tamaño grande ===
+            var sizeMB = file.size / 1048576;
+            if (sizeMB > 100) {
+              var continuar = window.confirm(
+                "ARCHIVO GRANDE DETECTADO\n\n" +
+                "El archivo \"" + file.name + "\" pesa " + sizeMB.toFixed(0) + " MB.\n\n" +
+                "En computadores con poca RAM (8GB o menos) puede fallar al procesarlo.\n\n" +
+                "Recomendaciones:\n" +
+                "- Cierra otras pestañas del navegador\n" +
+                "- Usa Chrome o Edge (no Firefox para archivos grandes)\n" +
+                "- Si falla, vuelve a generar el .scmem con FILTRO MAESTRO aplicado (por sede o mes) para reducir tamaño\n\n" +
+                "¿Continuar de todas formas?"
+              );
+              if (!continuar) {
+                setFS("Carga cancelada por el usuario (" + sizeMB.toFixed(0) + " MB)");
+                continue;
+              }
+            }
+
+            setFS("Leyendo " + file.name + " (" + sizeMB.toFixed(1) + " MB)...");
+            var text;
+            try {
+              text = await file.text();
+            } catch (errLectura) {
+              setFS("Error al leer archivo: " + (errLectura.message || "memoria insuficiente. Cierra pestañas y vuelve a intentar."));
+              continue;
+            }
+
+            setFS("Parseando JSON (" + (text.length / 1048576).toFixed(0) + " MB)...");
+            var json;
+            try {
+              json = JSON.parse(text);
+            } catch (errParse) {
+              // Error de parsing - dar mensaje util
+              var msg = errParse.message || "JSON invalido";
+              var posMatch = msg.match(/position (\d+)/);
+              var lineMatch = msg.match(/line (\d+)/);
+              var detalle = "";
+              if (posMatch && lineMatch) {
+                var pos = parseInt(posMatch[1]);
+                var lin = parseInt(lineMatch[1]);
+                var pctLeido = ((pos / text.length) * 100).toFixed(1);
+                detalle = "\n\nEl archivo se corto en la posicion " + pos.toLocaleString() + " (linea " + lin.toLocaleString() + "), " + pctLeido + "% del total. ";
+                if (pctLeido > 50 && pctLeido < 99) {
+                  detalle += "Esto suele pasar por falta de RAM en este computador. ";
+                  detalle += "Soluciones:\n- Cierra otras pestanas y reintenta\n- Usa un computador con mas RAM\n- Genera un .scmem mas pequeño filtrando por sede o mes";
+                }
+              }
+              setFS("Error al procesar JSON: " + msg + detalle);
+              text = null; // liberar memoria
+              continue;
+            }
+            text = null; // liberar el string grande despues de parsearlo
+
             if (json._type === "seguimiento_memory" || json._type === "staffpulse_memory") {
+              setFS("Normalizando " + (json.marcaciones ? json.marcaciones.length.toLocaleString() : 0) + " marcaciones...");
               // Normalizar sedes y reconstruir BREAK_PAIRS al cargar desde memoria
               var reconstructWarnings = 0;
               var marcNorm = (json.marcaciones||[]).map(function(m){ var c=Object.assign({},m); if(c.DEPENDENCIA) c.DEPENDENCIA=normSede(c.DEPENDENCIA);
@@ -4677,15 +4730,33 @@ function App() {
               }
               var factNorm = (json.facturas||[]).map(function(f){ var c=Object.assign({},f); if(c.sede) c.sede=normSede(c.sede); return c; });
               setData({marc:marcNorm,fact:factNorm});
-              setFS("Memoria cargada: " + (json.marcaciones?json.marcaciones.length:0) + " registros");
+              if (reconstructWarnings === 0) {
+                setFS("Memoria cargada: " + marcNorm.length.toLocaleString() + " marcaciones · " + factNorm.length.toLocaleString() + " facturas");
+              }
               setProc(false);
               return;
             }
             continue;
           }
 
+          var sizeMBxls = file.size / 1048576;
+          if (sizeMBxls > 100) {
+            var continuarXls = window.confirm(
+              "ARCHIVO EXCEL GRANDE\n\n" +
+              "\"" + file.name + "\" pesa " + sizeMBxls.toFixed(0) + " MB.\n\n" +
+              "En computadores con poca RAM (8GB o menos) puede fallar al parsear.\n\n" +
+              "Si el computador no aguanta:\n" +
+              "- Cierra otras pestanas del navegador\n" +
+              "- Divide el archivo por sede o mes\n\n" +
+              "¿Continuar?"
+            );
+            if (!continuarXls) {
+              setFS("Carga cancelada (" + sizeMBxls.toFixed(0) + " MB)");
+              continue;
+            }
+          }
           var buf = await file.arrayBuffer();
-          setFS("Parseando Excel: " + file.name + " (" + (file.size / 1048576).toFixed(1) + " MB)...");
+          setFS("Parseando Excel: " + file.name + " (" + sizeMBxls.toFixed(1) + " MB)...");
           // NO usar cellDates - las horas vienen como fracciones (0 a 1) que son mas faciles de parsear
           var wb = XLSX.read(buf, {type:"array"});
 
@@ -4812,7 +4883,7 @@ function App() {
 
   var expMem = function() {
     var sedeName = masterFilter.sedes ? Object.keys(masterFilter.sedes).find(function(k){return masterFilter.sedes[k];}) || "" : "";
-    var jsonStr = JSON.stringify({_type:"seguimiento_memory",_v:2,marcaciones:filteredData.marc,facturas:filteredData.fact}, null, 2);
+    var jsonStr = JSON.stringify({_type:"seguimiento_memory",_v:2,marcaciones:filteredData.marc,facturas:filteredData.fact});
     var fecha = new Date().toISOString().slice(0,10);
     var nombre = "seguimiento_memoria_" + (sedeName ? sedeName.replace(/\s+/g,"_") + "_" : "") + fecha + ".json";
     descargarArchivo(jsonStr, nombre, "application/json");
