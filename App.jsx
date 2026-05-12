@@ -366,6 +366,40 @@ function procBase(rows) {
   return results;
 }
 
+/* === ENRIQUECER FACTURAS con dsem, quincena, semana (necesita año del usuario) === */
+function enriquecerFacturas(facturas, anioInicio, cruzandoAnios) {
+  if (!facturas || !facturas.length) return [];
+  var meses = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+  var diasSem = ["Domingo","Lunes","Martes","Miercoles","Jueves","Viernes","Sabado"];
+  var mesAIdx = {};
+  meses.forEach(function(m,i){ mesAIdx[m] = i; });
+  // En modo "cruzando anios" los meses ENE/FEB/MAR usan año+1
+  var mesesAnioSig = {0:1,1:1,2:1};
+
+  return facturas.map(function(f) {
+    var c = Object.assign({}, f);
+    var mesIdx = mesAIdx[String(f.mes||"").toLowerCase().trim()];
+    if (mesIdx === undefined || !f.dia) return c;
+    var anio = anioInicio;
+    if (cruzandoAnios && mesesAnioSig[mesIdx]) anio = anioInicio + 1;
+    var dObj = new Date(anio, mesIdx, Number(f.dia));
+    if (isNaN(dObj.getTime())) return c;
+    c.anio = anio;
+    c.fecha = dObj.toISOString().slice(0,10);
+    c.dsem = diasSem[dObj.getDay()];
+    c.quincena = Number(f.dia) <= 15 ? "Si" : "No";
+    var sw = new Date(dObj);
+    var dw = dObj.getDay() === 0 ? 7 : dObj.getDay();
+    sw.setDate(dObj.getDate() - dw + 1);
+    var ew = new Date(sw);
+    ew.setDate(sw.getDate() + 6);
+    c.semana = sw.getMonth() === ew.getMonth()
+      ? sw.getDate() + " AL " + ew.getDate() + " DE " + meses[sw.getMonth()].toUpperCase() + " " + sw.getFullYear()
+      : sw.getDate() + " DE " + meses[sw.getMonth()].toUpperCase() + " AL " + ew.getDate() + " DE " + meses[ew.getMonth()].toUpperCase() + " " + ew.getFullYear();
+    return c;
+  });
+}
+
 /* === PROCESS FACTURAS === */
 function procFact(rows) {
   if (!rows || rows.length < 2) return [];
@@ -459,13 +493,18 @@ function buildChart(marc, fact, f) {
     return true;
   });
 
-  // -- Filtrar facturas en un solo recorrido --
+  // -- Filtrar facturas usando campos enriquecidos (dsem, quincena, semana) --
+  const quincenaValF = f.quincena && f.quincena !== "Todos" ? (f.quincena === "Quincena" ? "Si" : "No") : null;
   const ff = fact.filter(function(x) {
-    if (f.sede  !== "Todas" && x.sede    !== f.sede)  return false;
-    if (f.clase !== "Todas" && x.clase   !== f.clase) return false;
-    if (f.area  && f.area  !== "Todas" && x.seccion !== f.area)  return false;
-    if (f.mes   !== "Todos" && x.mes     !== f.mes)   return false;
-    if (f.dia   !== "Todos" && String(x.dia) !== f.dia) return false;
+    if (f.sede    !== "Todas" && x.sede    !== f.sede)    return false;
+    if (f.clase   !== "Todas" && x.clase   !== f.clase)   return false;
+    if (f.area    && f.area  !== "Todas" && x.seccion !== f.area) return false;
+    if (f.mes     !== "Todos" && x.mes     !== f.mes)     return false;
+    if (f.dia     !== "Todos" && String(x.dia) !== f.dia) return false;
+    // Filtros nuevos sobre campos enriquecidos
+    if (f.dsem    !== "Todos" && x.dsem    && x.dsem    !== f.dsem)    return false;
+    if (f.semana  !== "Todas" && x.semana  && x.semana  !== f.semana)  return false;
+    if (quincenaValF !== null && x.quincena && x.quincena !== quincenaValF) return false;
     return true;
   });
 
@@ -1532,39 +1571,88 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
   /* Reset filtros cuando cambian los datos cargados */
   useEffect(() => { setFiltros(filtrosDefault); setPagina(0); setBusqueda(""); }, [marcaciones.length, facturas.length]);
 
-  // -- Opciones dinamicas de filtros --
+  // -- Opciones dinamicas e INTELIGENTES: se acotan según los demás filtros activos --
   const opcionesFiltros = useMemo(() => {
-    const sedes = {}, secciones = {}, clases = {}, meses = {}, semanas = {}, dias = {}, sedesFacturas = {}, areas = {};
+    const ORD_MES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+    const ORD_DSEM = ["Lunes","Martes","Miercoles","Miércoles","Jueves","Viernes","Sabado","Sábado","Domingo"];
 
-    marcaciones.forEach((m) => {
-      if (m.DEPENDENCIA) sedes[m.DEPENDENCIA] = 1;
-      if (m.CENTROCOSTO) secciones[m.CENTROCOSTO] = 1;
-      if (m.MES) meses[m.MES] = 1;
-      if (m.SEMANA) semanas[m.SEMANA] = 1;
-      if (m.DIA != null && String(m.DIA) !== "undefined" && String(m.DIA) !== "") dias[String(m.DIA)] = 1;
-    });
+    // Helper: filtrar marcaciones EXCEPTO por una clave dada (para mostrar opciones de esa clave)
+    const matchM = (m, exceptKey) => {
+      if (exceptKey !== "sede"    && filtros.sede    !== "Todas" && m.DEPENDENCIA !== filtros.sede) return false;
+      if (exceptKey !== "seccion" && filtros.seccion !== "Todas" && m.CENTROCOSTO !== filtros.seccion) return false;
+      if (exceptKey !== "mes"     && filtros.mes     !== "Todos" && m.MES         !== filtros.mes) return false;
+      if (exceptKey !== "dsem"    && filtros.dsem    !== "Todos" && m.DIA_SEMANA  !== filtros.dsem) return false;
+      if (exceptKey !== "semana"  && filtros.semana  !== "Todas" && m.SEMANA      !== filtros.semana) return false;
+      if (exceptKey !== "dia"     && filtros.dia     !== "Todos" && String(m.DIA) !== filtros.dia) return false;
+      if (exceptKey !== "quincena" && filtros.quincena !== "Todos") {
+        const qv = filtros.quincena === "Quincena" ? "Si" : "No";
+        if (m.QUINCENA !== qv) return false;
+      }
+      return true;
+    };
+    const matchF = (f, exceptKey) => {
+      if (exceptKey !== "sede"  && filtros.sede  !== "Todas" && f.sede  !== filtros.sede) return false;
+      if (exceptKey !== "clase" && filtros.clase !== "Todas" && f.clase !== filtros.clase) return false;
+      if (exceptKey !== "area"  && filtros.area  && filtros.area !== "Todas" && f.seccion !== filtros.area) return false;
+      if (exceptKey !== "mes"   && filtros.mes   !== "Todos" && f.mes   !== filtros.mes) return false;
+      if (exceptKey !== "dia"   && filtros.dia   !== "Todos" && String(f.dia) !== filtros.dia) return false;
+      if (exceptKey !== "dsem"  && filtros.dsem  !== "Todos" && f.dsem && f.dsem !== filtros.dsem) return false;
+      if (exceptKey !== "semana" && filtros.semana !== "Todas" && f.semana && f.semana !== filtros.semana) return false;
+      if (exceptKey !== "quincena" && filtros.quincena !== "Todos" && f.quincena) {
+        const qv = filtros.quincena === "Quincena" ? "Si" : "No";
+        if (f.quincena !== qv) return false;
+      }
+      return true;
+    };
 
-    facturas.forEach((f) => {
-      if (f.clase) clases[f.clase] = 1;
-      if (f.sede) sedesFacturas[f.sede] = 1;
-      if (f.seccion) areas[f.seccion] = 1; // desc_cri_mayor_item_2 -> Area de productos
-      if (f.mes) meses[f.mes] = 1;
-      if (f.dia != null && f.dia > 0) dias[String(f.dia)] = 1;
-    });
+    // Recopilar valores únicos para cada filtro - los datos de marcaciones + facturas combinados
+    const recoger = (exceptKey, getM, getF) => {
+      const set = {};
+      marcaciones.forEach(m => { if (matchM(m, exceptKey)) { const v = getM(m); if (v != null && v !== "") set[v] = 1; } });
+      facturas.forEach(f => { if (matchF(f, exceptKey)) { const v = getF(f); if (v != null && v !== "") set[v] = 1; } });
+      return set;
+    };
 
-    Object.keys(sedesFacturas).forEach((k) => { sedes[k] = 1; });
+    const sedes      = recoger("sede",     m => m.DEPENDENCIA, f => f.sede);
+    const secciones  = recoger("seccion",  m => m.CENTROCOSTO, () => null);
+    const areas      = recoger("area",     () => null,         f => f.seccion);
+    const clases     = recoger("clase",    () => null,         f => f.clase);
+    const meses      = recoger("mes",      m => m.MES,         f => f.mes);
+    const dsems      = recoger("dsem",     m => m.DIA_SEMANA,  f => f.dsem);
+    const semanas    = recoger("semana",   m => m.SEMANA,      f => f.semana);
+    const dias       = recoger("dia",      m => String(m.DIA), f => f.dia != null && f.dia > 0 ? String(f.dia) : null);
+    const quincenas  = (() => {
+      const s = {};
+      marcaciones.forEach(m => { if (matchM(m, "quincena") && m.QUINCENA) s[m.QUINCENA === "Si" ? "Quincena" : "No Quincena"] = 1; });
+      facturas.forEach(f => { if (matchF(f, "quincena") && f.quincena) s[f.quincena === "Si" ? "Quincena" : "No Quincena"] = 1; });
+      return s;
+    })();
 
     return {
-      sedes: ["Todas", ...Object.keys(sedes)],
-      secciones: ["Todas", ...Object.keys(secciones)],
-      areas: ["Todas", ...Object.keys(areas).sort()],
-      clases: ["Todas", ...Object.keys(clases)],
-      meses: (function(){ var ORD=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"]; return ["Todos", ...Object.keys(meses).sort(function(a,b){ return ORD.indexOf(a.toLowerCase().trim()) - ORD.indexOf(b.toLowerCase().trim()); })]; })(),
-      diasSemana: ["Todos", "Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado", "Domingo"],
-      semanas: ["Todas", ...Object.keys(semanas)],
-      dias: ["Todos", ...Object.keys(dias).sort((a, b) => (+a) - (+b))],
+      sedes:      ["Todas", ...Object.keys(sedes).sort()],
+      secciones:  ["Todas", ...Object.keys(secciones).sort()],
+      areas:      ["Todas", ...Object.keys(areas).sort()],
+      clases:     ["Todas", ...Object.keys(clases).sort()],
+      meses:      ["Todos", ...Object.keys(meses).sort((a,b)=> ORD_MES.indexOf(a.toLowerCase().trim()) - ORD_MES.indexOf(b.toLowerCase().trim()))],
+      diasSemana: ["Todos", ...Object.keys(dsems).sort((a,b)=> ORD_DSEM.indexOf(a) - ORD_DSEM.indexOf(b))],
+      semanas:    ["Todas", ...Object.keys(semanas).sort()],
+      dias:       ["Todos", ...Object.keys(dias).sort((a, b) => (+a) - (+b))],
+      quincenasOpts: ["Todos", ...Object.keys(quincenas)],
     };
-  }, [marcaciones, facturas]);
+  }, [marcaciones, facturas, filtros]);
+
+  // Auto-reset de filtros que ya no aparecen en las opciones (e.g. seleccionaste día 20, luego quincena=primera)
+  useEffect(() => {
+    const fixes = {};
+    if (filtros.dia !== "Todos" && opcionesFiltros.dias.indexOf(filtros.dia) < 0) fixes.dia = "Todos";
+    if (filtros.dsem !== "Todos" && opcionesFiltros.diasSemana.indexOf(filtros.dsem) < 0) fixes.dsem = "Todos";
+    if (filtros.semana !== "Todas" && opcionesFiltros.semanas.indexOf(filtros.semana) < 0) fixes.semana = "Todas";
+    if (filtros.mes !== "Todos" && opcionesFiltros.meses.indexOf(filtros.mes) < 0) fixes.mes = "Todos";
+    if (filtros.seccion !== "Todas" && opcionesFiltros.secciones.indexOf(filtros.seccion) < 0) fixes.seccion = "Todas";
+    if (filtros.area && filtros.area !== "Todas" && opcionesFiltros.areas.indexOf(filtros.area) < 0) fixes.area = "Todas";
+    if (filtros.clase !== "Todas" && opcionesFiltros.clases.indexOf(filtros.clase) < 0) fixes.clase = "Todas";
+    if (Object.keys(fixes).length > 0) setFiltros(prev => ({...prev, ...fixes}));
+  }, [opcionesFiltros]);
 
   // -- Marcaciones filtradas (para tabla) — un solo recorrido en vez de 7 filter encadenados --
   const marcacionesFiltradas = useMemo(() => {
@@ -1613,12 +1701,16 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
     let maxColaboradores = 0, maxTransacciones = 0, ventaTotal = 0;
     datosGrafico.forEach((x) => { if (x.colaboradores > maxColaboradores) maxColaboradores = x.colaboradores; });
     datosGrafico.forEach((x) => { if (x.transacciones > maxTransacciones) maxTransacciones = x.transacciones; });
+    const qVentaTotal = filtros.quincena !== "Todos" ? (filtros.quincena === "Quincena" ? "Si" : "No") : null;
     facturas.forEach((f) => {
       if (filtros.sede  !== "Todas" && f.sede    !== filtros.sede)  return;
       if (filtros.clase !== "Todas" && f.clase   !== filtros.clase) return;
       if (filtros.area  && filtros.area  !== "Todas" && f.seccion !== filtros.area)  return;
       if (filtros.mes   !== "Todos" && f.mes     !== filtros.mes)   return;
       if (filtros.dia   !== "Todos" && String(f.dia) !== filtros.dia) return;
+      if (filtros.dsem  !== "Todos" && f.dsem    && f.dsem    !== filtros.dsem)    return;
+      if (filtros.semana !== "Todas" && f.semana && f.semana !== filtros.semana)  return;
+      if (qVentaTotal !== null && f.quincena && f.quincena !== qVentaTotal) return;
       ventaTotal += f.venta || 0;
     });
 
@@ -1707,10 +1799,17 @@ function DashView({ marc: marcaciones = [], fact: facturas = [] }) {
 
       {/* Filtros */}
       {filtrosVisibles.length > 0 && (
-        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:18,padding:"10px 14px",borderRadius:14,background:C.sf,border:"1px solid "+C.bd,boxShadow:"0 1px 4px rgba(0,0,0,0.03)"}}>
-          {filtrosVisibles.map((fp) => (
-            <Pill key={fp.key} label={fp.label} value={filtros[fp.key]} options={fp.opts} onChange={(v) => aplicarFiltro(fp.key, v)} />
-          ))}
+        <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:18}}>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,padding:"10px 14px",borderRadius:14,background:C.sf,border:"1px solid "+C.bd,boxShadow:"0 1px 4px rgba(0,0,0,0.03)"}}>
+            {filtrosVisibles.map((fp) => (
+              <Pill key={fp.key} label={fp.label} value={filtros[fp.key]} options={fp.opts} onChange={(v) => aplicarFiltro(fp.key, v)} />
+            ))}
+          </div>
+          {filtros.seccion !== "Todas" && hasFact && (
+            <div style={{padding:"6px 12px",borderRadius:10,background:"rgba(217,119,6,0.08)",border:"1px solid rgba(217,119,6,0.2)",color:"#92400e",fontSize:11}}>
+              ⓘ El filtro <strong>Sección</strong> sólo aplica a Personal (centro de costo del empleado). Las facturas se muestran sin este filtro. Para filtrar ventas por área usa <strong>Area</strong>.
+            </div>
+          )}
         </div>
       )}
 
@@ -4393,6 +4492,69 @@ function ExportModal({ data, filteredData, masterFilter, limpiarMarc, descargarA
   );
 }
 
+function YearSelectorModal({ facturas, onConfirm, onCancel }) {
+  // Detectar meses presentes
+  const mesesDetectados = useMemo(() => {
+    const s = {};
+    facturas.forEach(f => { if (f.mes) s[String(f.mes).toLowerCase().trim()] = 1; });
+    return Object.keys(s);
+  }, [facturas]);
+  // Sugerir cruzando años si hay diciembre+enero
+  const tieneDic = mesesDetectados.indexOf("diciembre") >= 0;
+  const tieneEneFeb = mesesDetectados.indexOf("enero") >= 0 || mesesDetectados.indexOf("febrero") >= 0;
+  const sugerirCruzando = tieneDic && tieneEneFeb;
+  const anioActual = new Date().getFullYear();
+  const [anio, setAnio] = useState(sugerirCruzando ? anioActual - 1 : anioActual);
+  const [cruzando, setCruzando] = useState(sugerirCruzando);
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{background:C.sf,borderRadius:16,padding:28,maxWidth:520,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+        <h3 style={{margin:"0 0 8px",fontSize:20,fontWeight:800,color:C.w}}>¿De qué año son las facturas?</h3>
+        <p style={{margin:"0 0 18px",color:C.tm,fontSize:13,lineHeight:1.5}}>
+          Necesito el año para calcular día de la semana, quincena y semana ISO en cada factura. Esto hace que los filtros (Día Semana, Quincena, Semana) afecten también la curva de ventas.
+        </p>
+        <div style={{padding:10,borderRadius:8,background:C.sa,border:"1px solid "+C.bd,marginBottom:14,fontSize:11,color:C.tm}}>
+          <strong>Meses detectados:</strong> {mesesDetectados.join(", ")} ({mesesDetectados.length} mes{mesesDetectados.length>1?"es":""})
+        </div>
+
+        <div style={{marginBottom:14}}>
+          <label style={{display:"flex",alignItems:"center",gap:10,padding:12,borderRadius:10,background:!cruzando?C.pg:"transparent",border:"1px solid "+(!cruzando?C.p:C.bd),cursor:"pointer",marginBottom:8}}>
+            <input type="radio" name="cruzando" checked={!cruzando} onChange={()=>setCruzando(false)} />
+            <div style={{flex:1}}>
+              <div style={{fontWeight:600,color:C.w,fontSize:13}}>Todas las facturas son del mismo año</div>
+              <div style={{fontSize:11,color:C.td}}>Los meses (ej. ene-feb-mar) pertenecen todos a {anio}</div>
+            </div>
+          </label>
+          <label style={{display:"flex",alignItems:"center",gap:10,padding:12,borderRadius:10,background:cruzando?C.pg:"transparent",border:"1px solid "+(cruzando?C.p:C.bd),cursor:"pointer"}}>
+            <input type="radio" name="cruzando" checked={cruzando} onChange={()=>setCruzando(true)} />
+            <div style={{flex:1}}>
+              <div style={{fontWeight:600,color:C.w,fontSize:13}}>Cruzan años (ej. dic 2025 → feb 2026)</div>
+              <div style={{fontSize:11,color:C.td}}>Oct/Nov/Dic son año inicial; Ene/Feb/Mar son año siguiente</div>
+            </div>
+          </label>
+        </div>
+
+        <div style={{marginBottom:18}}>
+          <label style={{display:"block",fontSize:11,fontWeight:600,color:C.tm,marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}}>
+            {cruzando ? "Año de inicio" : "Año"}
+          </label>
+          <select value={anio} onChange={(e)=>setAnio(Number(e.target.value))} style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid "+C.bd,fontSize:14,fontWeight:600,color:C.w,background:C.sa}}>
+            {[anioActual-3, anioActual-2, anioActual-1, anioActual, anioActual+1].map(y => (
+              <option key={y} value={y}>{y}{cruzando?" → "+(y+1):""}</option>
+            ))}
+          </select>
+        </div>
+
+        <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+          <button onClick={onCancel} style={{padding:"10px 18px",borderRadius:8,fontSize:13,fontWeight:600,background:"transparent",border:"1px solid "+C.bd,color:C.tm,cursor:"pointer"}}>Cancelar</button>
+          <button onClick={()=>onConfirm(anio, cruzando)} style={{padding:"10px 22px",borderRadius:8,fontSize:13,fontWeight:700,background:"linear-gradient(135deg,#1C5A2A,#7dd105)",border:"none",color:"#fff",cursor:"pointer"}}>Aplicar año</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MasterFilterModal({ data, masterFilter, setMasterFilter, filteredData, onClose }) {
   var allSedes = {}, allMeses = {};
   data.marc.forEach(function(m) {
@@ -4531,6 +4693,9 @@ function App() {
   var _cr = useState(false), confirmReset = _cr[0], setConfirmReset = _cr[1];
   var _mf = useState({sedes:null,meses:null,clases:null,secciones:null}), masterFilter = _mf[0], setMasterFilter = _mf[1];
   var _mfOpen = useState(false), masterFilterOpen = _mfOpen[0], setMasterFilterOpen = _mfOpen[1];
+  // Modal para preguntar año de las facturas
+  var _yrOpen = useState(false), yearModalOpen = _yrOpen[0], setYearModalOpen = _yrOpen[1];
+  var _yrPending = useState([]), facturasPendingEnrich = _yrPending[0], setFacturasPendingEnrich = _yrPending[1];
   var _params = useState(Object.assign({}, PARAMS_DEFAULT)), parametrosGlobal = _params[0], setParametrosGlobal = _params[1];
   var fRef = useRef(null);
   var sessionTimer = useRef(null);
@@ -4729,9 +4894,19 @@ function App() {
                 setFS("⚠️ Memoria cargada con advertencias: " + reconstructWarnings + " breaks no se pudieron reconstruir. Los cálculos de políticas pueden estar incompletos. Recomendamos cargar el Excel original.");
               }
               var factNorm = (json.facturas||[]).map(function(f){ var c=Object.assign({},f); if(c.sede) c.sede=normSede(c.sede); return c; });
-              setData({marc:marcNorm,fact:factNorm});
-              if (reconstructWarnings === 0) {
-                setFS("Memoria cargada: " + marcNorm.length.toLocaleString() + " marcaciones · " + factNorm.length.toLocaleString() + " facturas");
+              // Verificar si las facturas ya tienen campos enriquecidos (dsem, quincena, semana)
+              var necesitaEnriquecer = factNorm.length > 0 && (!factNorm[0].dsem || !factNorm[0].quincena);
+              if (necesitaEnriquecer) {
+                // Cargar marcaciones de inmediato, las facturas van por modal de año
+                setData({marc:marcNorm, fact:[]});
+                setFacturasPendingEnrich(factNorm);
+                setYearModalOpen(true);
+                setFS("Memoria cargada: " + marcNorm.length.toLocaleString() + " marcaciones. Indica el año para procesar " + factNorm.length.toLocaleString() + " facturas...");
+              } else {
+                setData({marc:marcNorm,fact:factNorm});
+                if (reconstructWarnings === 0) {
+                  setFS("Memoria cargada: " + marcNorm.length.toLocaleString() + " marcaciones · " + factNorm.length.toLocaleString() + " facturas");
+                }
               }
               setProc(false);
               return;
@@ -4850,14 +5025,26 @@ function App() {
             }
           }
         }
-        setData(function(prev) {
-          return {
-            marc: result.marc.length > 0 ? result.marc : prev.marc,
-            fact: result.fact.length > 0 ? result.fact : prev.fact
-          };
-        });
-        setMasterFilter({sedes:null,meses:null,clases:null,secciones:null});
-        setMasterFilterOpen(true);
+        // Si llegaron facturas NUEVAS, abrir modal de año primero
+        if (result.fact.length > 0) {
+          setFacturasPendingEnrich(result.fact);
+          setYearModalOpen(true);
+          // Guardar marcaciones de inmediato pero las facturas esperan el año
+          if (result.marc.length > 0) {
+            setData(function(prev) {
+              return { marc: result.marc, fact: prev.fact };
+            });
+          }
+        } else {
+          setData(function(prev) {
+            return {
+              marc: result.marc.length > 0 ? result.marc : prev.marc,
+              fact: prev.fact
+            };
+          });
+          setMasterFilter({sedes:null,meses:null,clases:null,secciones:null});
+          setMasterFilterOpen(true);
+        }
       } catch (err) {
         setFS("Error al procesar: " + err.message);
         console.error("Upload error:", err);
@@ -5221,6 +5408,26 @@ function App() {
         </div>
       </div>
 
+
+      {yearModalOpen && (
+        <YearSelectorModal
+          facturas={facturasPendingEnrich}
+          onConfirm={function(anio, cruzandoAnios) {
+            var enriquecidas = enriquecerFacturas(facturasPendingEnrich, anio, cruzandoAnios);
+            setData(function(prev) { return { marc: prev.marc, fact: enriquecidas }; });
+            setFacturasPendingEnrich([]);
+            setYearModalOpen(false);
+            setMasterFilter({sedes:null,meses:null,clases:null,secciones:null});
+            setMasterFilterOpen(true);
+            setFS(enriquecidas.length.toLocaleString() + " facturas procesadas con año " + anio + (cruzandoAnios ? " (cruzando años)" : ""));
+          }}
+          onCancel={function() {
+            setFacturasPendingEnrich([]);
+            setYearModalOpen(false);
+            setFS("Carga de facturas cancelada");
+          }}
+        />
+      )}
 
       {masterFilterOpen && <MasterFilterModal data={data} masterFilter={masterFilter} setMasterFilter={setMasterFilter} filteredData={filteredData} onClose={function(){setMasterFilterOpen(false);}} />}
 
